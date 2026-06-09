@@ -1,7 +1,6 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/convex-sync-motherduck" },
-    { "path": "./apps/demo" }
+    { "path": "./packages/convex-sync-motherduck" }
   ]
 }
