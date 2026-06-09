@@ -35,4 +35,5 @@ Thumbs.db
 .vscode/
 .idea/
 PROGRESS.md
-/apps/demo/convex/_generated
+**/convex/_generated/
+/packages/convex-sync-motherduck/_generated/
