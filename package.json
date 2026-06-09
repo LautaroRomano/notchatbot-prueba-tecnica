@@ -1,0 +1,24 @@
+{
+  "name": "notchatbot-prueba-tecnica",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter '@notchat/demo' dev",
+    "convex:dev": "bun --filter '@notchat/demo' convex:dev",
+    "convex:run": "bun --filter '@notchat/demo' convex:run",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "@types/node": "^22.10.2"
+  },
+  "packageManager": "bun@1.3.14"
+}

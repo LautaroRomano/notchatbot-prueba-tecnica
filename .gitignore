@@ -1,0 +1,36 @@
+node_modules/
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# convex
+.convex/
+
+# duckdb local files
+*.duckdb
+*.duckdb.wal
+local.duckdb*
+
+# convex self-hosted data
+convex-backend-data/
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+bun-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/

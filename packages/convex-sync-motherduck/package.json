@@ -1,0 +1,34 @@
+{
+  "name": "convex-sync-motherduck",
+  "version": "0.0.1",
+  "description": "Convex component that replicates tables to MotherDuck/DuckDB via CDC (snapshot + deltas).",
+  "type": "module",
+  "main": "./src/client/index.ts",
+  "module": "./src/client/index.ts",
+  "types": "./src/client/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/client/index.ts",
+      "default": "./src/client/index.ts"
+    },
+    "./convex.config": {
+      "types": "./convex.config.ts",
+      "default": "./convex.config.ts"
+    }
+  },
+  "files": [
+    "src",
+    "convex.config.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "convex": "^1.17.0"
+  },
+  "devDependencies": {
+    "convex": "^1.17.0",
+    "typescript": "^5.6.3"
+  }
+}
