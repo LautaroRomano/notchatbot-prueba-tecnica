@@ -19,9 +19,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^4.0.4",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/node": "^22.10.2",
+    "convex-test": "^0.0.37",
     "typescript": "^5.6.3"
   }
 }

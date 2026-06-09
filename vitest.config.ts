@@ -7,7 +7,8 @@ export default defineConfig({
       "apps/**/*.test.ts",
       "tests/**/*.test.ts",
     ],
-    environment: "node",
+    environment: "edge-runtime",
     globals: false,
+    server: { deps: { inline: ["convex-test"] } },
   },
 });
