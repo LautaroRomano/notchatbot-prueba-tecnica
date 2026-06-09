@@ -18,6 +18,7 @@
   },
   "files": [
     "src",
+    "schema.ts",
     "convex.config.ts",
     "README.md"
   ],
