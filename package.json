@@ -13,7 +13,7 @@
     "convex:run": "bun --filter '@notchat/demo' convex:run",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b && tsc -p apps/demo"
+    "typecheck": "tsc -p packages/convex-sync-motherduck && tsc -p apps/demo"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

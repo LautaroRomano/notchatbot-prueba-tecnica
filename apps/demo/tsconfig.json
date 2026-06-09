@@ -16,8 +16,10 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "convex/_generated"],
-  "references": [
-    { "path": "../../packages/convex-sync-motherduck" }
+  "exclude": [
+    "node_modules",
+    ".next",
+    "convex/_generated",
+    "**/*.test.ts"
   ]
 }
