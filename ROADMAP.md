@@ -53,17 +53,17 @@ Esto es **una librería**, no código de la app. Modelar como [componente oficia
 
 ---
 
-## Fase 3 — Cliente DuckDB/MotherDuck (½ día)
+## Fase 3 — Cliente DuckDB/MotherDuck (½ día) ✅
 
-- [ ] Adapter `Destination` con dos implementaciones detrás de la misma interfaz:
-  - `DuckDBLocal` (librería `@duckdb/node-api` o `duckdb`)
-  - `MotherDuck` (HTTP)
-- [ ] Métodos: `ensureTable(name, columns)`, `applyBatch(tx, rows)`, `applyDeletes(ids)`, `tableExists(name)`, `countRows(name)`.
-- [ ] `applyBatch` usa `INSERT … ON CONFLICT (_id) DO UPDATE` — idempotente por construcción.
-- [ ] Una sola **transacción por batch**: si falla, no se commitea el cursor.
-- [ ] Tests del adapter aislados de Convex.
+- [x] Adapter `Destination` con UNA implementación que cubre los dos backends:
+  - DuckDB local → `DuckDBInstance.create(path)`
+  - MotherDuck → `DuckDBInstance.create("md:<db>", { motherduck_token })`
+- [x] Métodos: `ensureTable`, `applyBatch`, `applyDeletes`, `tableExists`, `countRows`, `dropTable`, `withTransaction`, `close`.
+- [x] `applyBatch` usa `INSERT … ON CONFLICT (_id) DO UPDATE SET …` — idempotente por construcción.
+- [x] `withTransaction` envuelve cada batch en `BEGIN/COMMIT/ROLLBACK`; `applyBatch`/`applyDeletes` fallan si se llaman fuera.
+- [x] Tests del adapter aislados de Convex (`// @vitest-environment node`).
 
-**Entregable:** podés hacer `dst.applyBatch([...])` y leer las filas con DuckDB CLI.
+**Entregable:** 12 tests verdes sobre `:memory:`; cualquier consumidor llama `createDuckDestination(...)` → usa la interfaz `Destination`.
 
 ---
 
