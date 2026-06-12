@@ -39,11 +39,15 @@ export default defineSchema({
     rowsApplied: v.number(),
   }).index("by_name", ["name"]),
 
+  // Singleton — el invariante "una sola fila" se enforcea en `config.set`
+  // (no hay UNIQUE declarativo en Convex). Todos los campos opcionales
+  // para permitir setConfig parcial durante el bootstrap; `motherduckToken`
+  // sólo aplica cuando `destination.kind === "motherduck"`.
   syncConfig: defineTable({
-    origin: v.string(),
-    deployKey: v.string(),
-    motherduckToken: v.string(),
-    destination,
+    origin: v.optional(v.string()),
+    deployKey: v.optional(v.string()),
+    motherduckToken: v.optional(v.string()),
+    destination: v.optional(destination),
   }),
 
   syncCursors: defineTable({

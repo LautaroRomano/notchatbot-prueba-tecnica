@@ -4,6 +4,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "convex.config.ts", "schema.ts"],
+  "include": ["src/**/*", "convex.config.ts", "schema.ts", "config.ts", "tables.ts"],
   "exclude": ["dist", "node_modules", "_generated"]
 }

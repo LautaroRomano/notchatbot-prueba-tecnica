@@ -19,6 +19,8 @@
   "files": [
     "src",
     "schema.ts",
+    "config.ts",
+    "tables.ts",
     "convex.config.ts",
     "README.md"
   ],
