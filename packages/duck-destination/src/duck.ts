@@ -230,17 +230,27 @@ class DuckDestination implements Destination {
     }
   }
 
-  private async columnNames(table: string): Promise<Set<string>> {
+  async columnTypes(name: string): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const exists = await this.tableExists(name);
+    if (!exists) return out;
     const reader = await this.conn.runAndReadAll(
-      "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
-      [table],
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ?",
+      [name],
     );
-    const out = new Set<string>();
     for (const row of reader.getRowObjectsJS()) {
-      const c = row.column_name;
-      if (typeof c === "string") out.add(c);
+      const col = row.column_name;
+      const typ = row.data_type;
+      if (typeof col === "string" && typeof typ === "string") {
+        out.set(col, typ.toUpperCase());
+      }
     }
     return out;
+  }
+
+  private async columnNames(table: string): Promise<Set<string>> {
+    const types = await this.columnTypes(table);
+    return new Set(types.keys());
   }
 }
 

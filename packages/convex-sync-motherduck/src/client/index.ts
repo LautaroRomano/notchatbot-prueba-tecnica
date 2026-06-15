@@ -4,8 +4,10 @@ import type {
   GenericQueryCtx,
 } from "convex/server";
 import type {
+  ColumnDef,
   Destination,
 } from "@notchat/destination-types";
+import { duckSqlType } from "@notchat/destination-types";
 import {
   processSnapshotPage,
   type ProcessPageResult,
@@ -55,6 +57,22 @@ export type TableStatus = {
   rowsApplied: number;
   lastAppliedAtMs?: number | undefined;
 };
+
+/**
+ * Resultado extendido de `processOneSnapshotPage` — incluye el caso de
+ * cambio de tipo detectado, que dispara un re-snapshot automático.
+ */
+export type SnapshotResult =
+  | ProcessPageResult
+  | { kind: "type_reset"; changedColumns: string[] };
+
+/**
+ * Resultado extendido de `processOneDeltaBatch` — incluye el caso de
+ * cambio de tipo detectado, que dispara un re-snapshot automático.
+ */
+export type DeltaResult =
+  | ProcessDeltaResult
+  | { kind: "type_reset"; changedColumns: string[] };
 
 /**
  * Referencia al componente. Convex todavía no genera tipos fuertes para
@@ -159,7 +177,7 @@ export class MotherduckSync {
     ctx: GenericActionCtx<any>,
     tableName: string,
     destination: Destination,
-  ): Promise<ProcessPageResult> {
+  ): Promise<SnapshotResult> {
     const config = (await ctx.runQuery(this.component.config.get, {})) as
       | SyncConfig
       | null;
@@ -176,6 +194,29 @@ export class MotherduckSync {
       cursor: string | undefined;
       rowsApplied: number;
     };
+
+    // Detección de cambio de tipo (Fase 7). Sólo si la tabla ya existe en
+    // el destino — en el primer snapshot no hay tabla todavía.
+    const changedColumns = await detectTypeChanges(
+      tableName,
+      progress.columns as ReadonlyArray<ColumnDef>,
+      destination,
+    );
+    if (changedColumns.length > 0) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "type_change_detected",
+          tableName,
+          changedColumns,
+          action: "resetting for re-snapshot",
+        }),
+      );
+      await ctx.runMutation(this.component.tables._resetForReSnapshot, {
+        tableName,
+      });
+      return { kind: "type_reset", changedColumns };
+    }
 
     const io: SnapshotIO = {
       loadProgress: async () => ({
@@ -234,7 +275,7 @@ export class MotherduckSync {
     ctx: GenericActionCtx<any>,
     tableName: string,
     destination: Destination,
-  ): Promise<ProcessDeltaResult> {
+  ): Promise<DeltaResult> {
     const config = (await ctx.runQuery(this.component.config.get, {})) as
       | SyncConfig
       | null;
@@ -252,6 +293,28 @@ export class MotherduckSync {
       cursor: string;
       rowsApplied: number;
     };
+
+    // Detección de cambio de tipo (Fase 7).
+    const changedColumns = await detectTypeChanges(
+      tableName,
+      progress.columns as ReadonlyArray<ColumnDef>,
+      destination,
+    );
+    if (changedColumns.length > 0) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "type_change_detected",
+          tableName,
+          changedColumns,
+          action: "resetting for re-snapshot",
+        }),
+      );
+      await ctx.runMutation(this.component.tables._resetForReSnapshot, {
+        tableName,
+      });
+      return { kind: "type_reset", changedColumns };
+    }
 
     const io: DeltaIO = {
       loadProgress: async () => ({
@@ -309,6 +372,41 @@ export class MotherduckSync {
       tableName,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Schema migrations — Fase 7
+// ---------------------------------------------------------------------------
+
+/**
+ * Compara las columnas declaradas contra los tipos actuales en el destino.
+ * Devuelve los nombres de columnas cuyo SQL type difiere del declarado.
+ *
+ * - Columnas no presentes en el destino se ignoran (la migración aditiva las
+ *   agrega con `ALTER TABLE`, no son un cambio de tipo).
+ * - `_id` se ignora (siempre VARCHAR PRIMARY KEY, invariante del sistema).
+ * - `bigint` y `timestamp_ms` se tratan como equivalentes (ambos → BIGINT)
+ *   — un cambio entre ellos no requiere re-snapshot.
+ */
+export async function detectTypeChanges(
+  tableName: string,
+  declared: ReadonlyArray<ColumnDef>,
+  destination: Pick<Destination, "columnTypes">,
+): Promise<string[]> {
+  const actual = await destination.columnTypes(tableName);
+  if (actual.size === 0) return []; // Tabla no existe aún: nada que comparar.
+
+  const changed: string[] = [];
+  for (const col of declared) {
+    if (col.name === "_id") continue;
+    const actualType = actual.get(col.name);
+    if (actualType === undefined) continue; // Columna nueva → migración aditiva, no cambio.
+    const expectedType = duckSqlType(col.type as any).toUpperCase();
+    if (actualType !== expectedType) {
+      changed.push(col.name);
+    }
+  }
+  return changed;
 }
 
 // Re-exports útiles para que el host pueda importar tipos sin saltar paquetes.

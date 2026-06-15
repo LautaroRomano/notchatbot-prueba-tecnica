@@ -66,9 +66,20 @@ export const _processOnePage = internalAction({
         await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
           tableName,
         });
-      } else {
+      } else if (result.kind === "done") {
         // Snapshot completo — arrancar el stream de deltas de inmediato.
         await ctx.scheduler.runAfter(0, (internal as any).delta._processDeltaBatch, {
+          tableName,
+        });
+      } else {
+        // type_reset: tabla vuelve a pending — re-arrancar snapshot desde cero.
+        console.log(JSON.stringify({
+          level: "info",
+          event: "type_reset_snapshot_restart",
+          tableName,
+          changedColumns: result.changedColumns,
+        }));
+        await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
           tableName,
         });
       }

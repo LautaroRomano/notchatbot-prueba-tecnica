@@ -56,6 +56,19 @@ export const _processDeltaBatch = internalAction({
           (internal as any).delta._processDeltaBatch,
           { tableName },
         );
+      } else if (result.kind === "type_reset") {
+        // Cambio de tipo detectado — tabla volvió a pending, arrancar snapshot.
+        console.log(JSON.stringify({
+          level: "info",
+          event: "type_reset_snapshot_restart",
+          tableName,
+          changedColumns: result.changedColumns,
+        }));
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).snapshot._processOnePage,
+          { tableName },
+        );
       }
       // Si `idle`: alcanzamos el live-head. El cron tick reinicia en ~10s.
     } catch (err) {

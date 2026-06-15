@@ -80,6 +80,14 @@ export interface Destination {
   tableExists(name: string): Promise<boolean>;
   countRows(name: string): Promise<number>;
 
+  /**
+   * Devuelve un mapa column_name → SQL type para las columnas actuales de
+   * la tabla. Usado por el watchdog de schema migrations para detectar cambios
+   * de tipo entre lo declarado en `registerSyncedTables` y lo real en DuckDB.
+   * Devuelve un mapa vacío si la tabla no existe.
+   */
+  columnTypes(name: string): Promise<Map<string, string>>;
+
   /** Sólo para tests y para reset del self-heal. */
   dropTable(name: string): Promise<void>;
 

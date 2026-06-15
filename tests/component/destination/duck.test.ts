@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDuckDestination } from "@notchat/duck-destination";
 import type { Destination, Row } from "@notchat/destination-types";
+import { detectTypeChanges } from "../../../packages/convex-sync-motherduck/src/client/index";
 
 const SPEC = [
   { name: "_id", type: "string" as const },
@@ -184,5 +185,55 @@ describe("DuckDestination (in-memory)", () => {
     const [row] = reader.getRowObjectsJS();
     // DuckDB devuelve el campo extraído como string.
     expect(String(row?.score)).toBe("7");
+  });
+
+  // ---- Schema migrations — Fase 7 -----------------------------------------
+
+  it("columnTypes devuelve mapa de columnas y sus tipos SQL", async () => {
+    await dst.ensureTable("contacts", SPEC);
+    const types = await dst.columnTypes("contacts");
+    expect(types.get("_id")).toBe("VARCHAR");
+    expect(types.get("name")).toBe("VARCHAR");
+    expect(types.get("age")).toBe("DOUBLE");
+    expect(types.get("active")).toBe("BOOLEAN");
+    expect(types.get("meta")).toBe("JSON");
+  });
+
+  it("columnTypes devuelve mapa vacío si la tabla no existe", async () => {
+    const types = await dst.columnTypes("no_existe");
+    expect(types.size).toBe(0);
+  });
+
+  it("detectTypeChanges: sin cambios devuelve lista vacía", async () => {
+    await dst.ensureTable("contacts", SPEC);
+    const changed = await detectTypeChanges("contacts", SPEC, dst);
+    expect(changed).toEqual([]);
+  });
+
+  it("detectTypeChanges: detecta columna con tipo cambiado", async () => {
+    // Crear tabla con age como DOUBLE (tipo "number").
+    await dst.ensureTable("contacts", SPEC);
+    // Ahora el caller declara age como "string" → tipo SQL esperado VARCHAR.
+    const newSpec = SPEC.map((c) =>
+      c.name === "age" ? { ...c, type: "string" as const } : c,
+    );
+    const changed = await detectTypeChanges("contacts", newSpec, dst);
+    expect(changed).toContain("age");
+    expect(changed).not.toContain("name"); // name sigue siendo string → VARCHAR ✓
+  });
+
+  it("detectTypeChanges: columna nueva no es cambio de tipo (es migración aditiva)", async () => {
+    await dst.ensureTable("contacts", SPEC);
+    // Añadimos una columna nueva que todavía no está en DuckDB.
+    const withExtra = [...SPEC, { name: "nickname", type: "string" as const }];
+    const changed = await detectTypeChanges("contacts", withExtra, dst);
+    // "nickname" no está en DuckDB aún → no es un cambio de tipo.
+    expect(changed).not.toContain("nickname");
+    expect(changed).toHaveLength(0);
+  });
+
+  it("detectTypeChanges: tabla inexistente devuelve lista vacía", async () => {
+    const changed = await detectTypeChanges("no_existe", SPEC, dst);
+    expect(changed).toHaveLength(0);
   });
 });
