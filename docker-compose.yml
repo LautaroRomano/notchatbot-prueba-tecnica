@@ -49,3 +49,26 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  next:
+    image: oven/bun:latest
+    container_name: notchat-next
+    working_dir: /app
+    volumes:
+      - .:/app
+      # Volumen nombrado para los node_modules dentro del contenedor Linux.
+      # Sin esto, los binarios nativos del host Windows (o Mac) colisionan con
+      # los binarios Linux que bun instala adentro del contenedor.
+      - next_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      # El frontend se conecta al backend a través del host, no del container network.
+      - NEXT_PUBLIC_CONVEX_URL=http://localhost:3210
+    command: sh -c "bun install && bun run --cwd apps/demo dev --hostname 0.0.0.0"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  next_node_modules:

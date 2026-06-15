@@ -50,6 +50,7 @@ Copiá el output al `.env.local` como `CONVEX_DEPLOY_KEY` y `CONVEX_SELF_HOSTED_
 | Streaming Export | http://localhost:3210/api/streaming_export/ |
 | HTTP Actions | http://localhost:3211 |
 | Dashboard | http://localhost:6791 |
+| Next.js (sync status) | http://localhost:3000/sync |
 
 ---
 
@@ -67,6 +68,14 @@ La primera corrida regenera todo el codegen (`apps/demo/convex/_generated/` y `p
 
 ## Correr la app (Next.js)
 
+**Opción A — todo con Docker** (recomendado):
+
+```bash
+docker compose up -d   # levanta backend + dashboard + next en http://localhost:3000
+```
+
+**Opción B — dev server local** (para editar el frontend con HMR):
+
 ```bash
 bun run dev          # http://localhost:3000
 ```
@@ -76,7 +85,7 @@ bun run dev          # http://localhost:3000
 ## Correr los tests
 
 ```bash
-bun run test         # corre todo (23 tests, ~2s)
+bun run test         # corre todo (48 tests, ~3s)
 bun run test:watch   # watch mode
 bun run typecheck    # tsc en componente + demo
 ```
@@ -154,11 +163,17 @@ bunx convex run sync:status  # rowsApplied debería seguir consistente
 .
 ├── apps/
 │   └── demo/                          ← Next.js + Convex (demo NotChat CRM)
+│       ├── app/
+│       │   ├── page.tsx               ← home (enlace a /sync)
+│       │   ├── sync/page.tsx          ← estado en tiempo real vía useQuery
+│       │   ├── layout.tsx             ← ConvexClientProvider
+│       │   └── ConvexClientProvider.tsx
 │       └── convex/
 │           ├── schema.ts              ← tablas del CRM
 │           ├── seed.ts                ← seed idempotente
 │           ├── sync.ts                ← instancia MotherduckSync, expone status
-│           ├── snapshot.ts            ← "use node" action que toca DuckDB
+│           ├── snapshot.ts            ← "use node" actions: snapshot + watchdog tick
+│           ├── delta.ts               ← "use node" action para el stream de deltas
 │           └── crons.ts               ← tick del watchdog (cada 10s)
 │
 ├── packages/
@@ -166,7 +181,9 @@ bunx convex run sync:status  # rowsApplied debería seguir consistente
 │   │   ├── convex.config.ts
 │   │   ├── schema.ts, config.ts, tables.ts
 │   │   ├── src/snapshot/runner.ts     ← lógica pura del snapshot
-│   │   ├── src/streaming/             ← cliente HTTP de list_snapshot
+│   │   ├── src/delta/runner.ts        ← lógica pura del stream de deltas
+│   │   ├── src/watchdog/index.ts      ← watchdog puro (sin Convex/DuckDB)
+│   │   ├── src/streaming/             ← clientes HTTP (list_snapshot + document_deltas)
 │   │   └── src/client/index.ts        ← MotherduckSync (cliente JS)
 │   │
 │   ├── destination-types/             ← solo tipos del Destination
@@ -187,6 +204,7 @@ bunx convex run sync:status  # rowsApplied debería seguir consistente
 | Síntoma | Causa probable | Fix |
 |---|---|---|
 | `bunx convex dev` no se conecta | Backend Docker no respondió todavía | `docker compose logs backend` y esperar el healthcheck verde |
+| Next.js container sale con error de módulo | node_modules del host (Windows) vs contenedor (Linux) | El volumen `next_node_modules` aísla los binarios — `docker compose down -v && docker compose up -d` reconstruye |
 | `Failed to load url @notchat/duck-destination` en tests | Workspace deps no se hoistearon | `bun install` desde el root |
 | `internal.snapshot does not exist` en typecheck | Codegen del demo viejo (sin backend cuando se ejecutó) | Correr `bun run convex:dev` con backend vivo para regenerar |
 | `"use node" not supported in components` | Algún archivo del componente declara "use node" | El directive solo va en el host. Las actions con native deps viven en `apps/demo/convex/` |

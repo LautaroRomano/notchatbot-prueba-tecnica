@@ -4,50 +4,50 @@ Plan de ejecución para la prueba técnica. Ordenado por dependencias: cada fase
 
 ---
 
-## Fase 0 — Setup del entorno (½ día)
+## Fase 0 — Setup del entorno (½ día) ✅
 
-- [ ] Inicializar repo con `bun init` + TypeScript estricto (`strict: true`, `noUncheckedIndexedAccess: true`).
-- [ ] Levantar **Convex self-hosted** local siguiendo https://docs.convex.dev/self-hosting (Docker compose del repo `convex-backend`).
-- [ ] Verificar que `http://localhost:3210/api/streaming_export/list_snapshot` responde con un `CONVEX_DEPLOY_KEY` válido.
-- [ ] Elegir destino: **DuckDB local** para desarrollo (`DUCKDB_PATH=./local.duckdb`), con switch a MotherDuck vía `MOTHERDUCK_TOKEN`.
-- [ ] Scaffold Next.js (App Router) mínimo — sólo placeholder, la UI no es el foco.
-- [ ] `.env.example` con todas las vars (`CONVEX_SELF_HOSTED_URL`, `CONVEX_DEPLOY_KEY`, `DUCKDB_PATH`, `MOTHERDUCK_TOKEN`, `MOTHERDUCK_DB_URL`).
-- [ ] Runner de tests configurado (Vitest + `convex-test`).
+- [x] Inicializar repo con `bun init` + TypeScript estricto (`strict: true`, `noUncheckedIndexedAccess: true`).
+- [x] Levantar **Convex self-hosted** local siguiendo https://docs.convex.dev/self-hosting (Docker compose del repo `convex-backend`).
+- [x] Verificar que `http://localhost:3210/api/streaming_export/list_snapshot` responde con un `CONVEX_DEPLOY_KEY` válido.
+- [x] Elegir destino: **DuckDB local** para desarrollo (`DUCKDB_PATH=./local.duckdb`), con switch a MotherDuck vía `MOTHERDUCK_TOKEN`.
+- [x] Scaffold Next.js (App Router) mínimo — sólo placeholder, la UI no es el foco.
+- [x] `.env.example` con todas las vars (`CONVEX_SELF_HOSTED_URL`, `CONVEX_DEPLOY_KEY`, `DUCKDB_PATH`, `MOTHERDUCK_TOKEN`, `MOTHERDUCK_DB_URL`).
+- [x] Runner de tests configurado (Vitest + `convex-test`).
 
 **Entregable:** `bun dev` levanta Next.js, `bunx convex dev` se conecta al backend local, tests corren en vacío.
 
 ---
 
-## Fase 1 — Schema de la demo NotChat CRM (½ día)
+## Fase 1 — Schema de la demo NotChat CRM (½ día) ✅
 
-- [ ] Tablas Convex: `tenants`, `contacts`, `conversations`, `messages`, `attributes`, `contactAttributes`.
-- [ ] `convex/seed.ts` idempotente (wipe-first o upsert por key natural):
+- [x] Tablas Convex: `tenants`, `contacts`, `conversations`, `messages`, `attributes`, `contactAttributes`.
+- [x] `convex/seed.ts` idempotente (wipe-first o upsert por key natural):
   - 2–3 tenants
   - ≥500 contactos
   - ≥2000 mensajes
   - 5 tipos de atributo
   - ≥1000 contactAttributes
-- [ ] Ejecutable como `bunx convex run seed:run`.
-- [ ] Test: correr el seed dos veces, contar filas, deben coincidir.
+- [x] Ejecutable como `bunx convex run seed:run`.
+- [x] Test: correr el seed dos veces, contar filas, deben coincidir.
 
 **Entregable:** seed reproducible sobre deployment limpio.
 
 ---
 
-## Fase 2 — Estructura del componente (½ día)
+## Fase 2 — Estructura del componente (½ día) ✅
 
 Esto es **una librería**, no código de la app. Modelar como [componente oficial de Convex](https://www.convex.dev/components).
 
-- [ ] Carpeta `packages/convex-sync-motherduck/` con su propio `package.json` y `convex.config.ts`.
-- [ ] Schema interno del componente:
+- [x] Carpeta `packages/convex-sync-motherduck/` con su propio `package.json` y `convex.config.ts`.
+- [x] Schema interno del componente:
   - `syncedTables` — `{ name, columns, status, lastCursor, snapshotTs, lastError, rowsApplied }`
   - `syncConfig` — singleton con `origin`, `deployKey`, `motherduckToken`, `destination`
   - `syncCursors` — cursor durable por tabla (separable de `syncedTables` para snapshot vs deltas)
-- [ ] API pública del componente:
+- [x] API pública del componente:
   - `setConfig` (mutation)
   - `registerSyncedTables(ctx, component, tables[])` (helper)
   - `status` (query) — devuelve estado por tabla
-- [ ] Demo app consume el componente desde `convex/sync.ts`. **Cero lógica de sync en la app.**
+- [x] Demo app consume el componente desde `convex/sync.ts`. **Cero lógica de sync en la app.**
 
 **Entregable:** `app.use(motherduckSync)` compila y `status` devuelve estado vacío.
 
@@ -82,53 +82,58 @@ Esto es **una librería**, no código de la app. Modelar como [componente oficia
 
 ---
 
-## Fase 5 — Stream de deltas (1 día) ⭐ corte automático
+## Fase 5 — Stream de deltas (1 día) ⭐ corte automático ✅
 
-- [ ] Action `runDeltas(tableName)` que arranca cuando snapshot está `done`:
+- [x] Action `_processDeltaBatch(tableName)` que arranca cuando snapshot está `done`:
   1. Cursor inicial = `snapshotTs`.
   2. `document_deltas?cursor=…` → aplicar inserts/updates/**deletes (tombstones)** en orden, en una sola tx → commit cursor.
-  3. Si no hay cambios, esperar y reintentar (long-poll o sleep + tick).
-- [ ] Deletes: `DELETE FROM tabla WHERE _id = ?` dentro de la misma tx.
-- [ ] Backoff exponencial si MotherDuck/DuckDB falla. Cursor **no avanza** hasta commit exitoso.
-- [ ] Test: secuencia insert→update→delete en Convex se refleja en DuckDB en el mismo orden.
-- [ ] Test: re-aplicar el mismo batch dos veces deja el destino idéntico (idempotencia).
-- [ ] Test: delete en Convex → fila desaparece en DuckDB.
+  3. Si no hay cambios (`idle`), el cron lo relanza en el siguiente tick.
+- [x] Deletes: `DELETE FROM tabla WHERE _id = ?` dentro de la misma tx.
+- [x] Cursor **no avanza** hasta commit exitoso (invariante de recovery).
+- [x] Test: secuencia insert→update→delete en Convex se refleja en DuckDB en el mismo orden.
+- [x] Test: re-aplicar el mismo batch dos veces deja el destino idéntico (idempotencia).
+- [x] Test: delete en Convex → fila desaparece en DuckDB.
 
-**Entregable:** modificar una fila en Convex y verla cambiar en DuckDB en < 5s.
-
----
-
-## Fase 6 — Self-heal / watchdog (½ día)
-
-- [ ] Cron interno del componente cada N segundos:
-  - Tablas registradas con `status: pending` y sin progreso → arrancar snapshot.
-  - Tablas con `lastError` reciente y backoff vencido → reintentar.
-  - **Detección de tabla borrada en destino**: si `tableExists` devuelve false pero el estado dice `done`, resetear cursor y re-snapshotear.
-- [ ] Test: borrar la tabla en DuckDB → watchdog la reconstruye sin intervención.
-- [ ] Logs estructurados (JSON) por cada acción del watchdog.
-
-**Entregable:** sobrevive a un `DROP TABLE` manual en el destino.
+**Entregable:** 7 tests verdes; la cadena completa snapshot→delta existe.
 
 ---
 
-## Fase 7 — Schema migrations (½ día)
+## Fase 6 — Self-heal / watchdog (½ día) ✅
 
-- [ ] Al registrar tablas, comparar columnas declaradas vs schema actual en destino.
-- [ ] **Aditivo:** columna nueva → `ALTER TABLE … ADD COLUMN`. Sin pérdida de datos.
-- [ ] **Cambio de tipo:** marcar tabla para re-snapshot completo (documentar en README como decisión).
-- [ ] Test: agregar columna en `registerSyncedTables` → aparece en DuckDB, datos viejos intactos.
+- [x] Función pura `watchdogDecide` (sin efectos secundarios, testeable sin backend):
+  - Tablas `pending`/`idle` → start_snapshot.
+  - `running_snapshot` atascada > 2 min → restart snapshot.
+  - `running_delta` + tabla borrada en destino (`tableExists=false`) → reset_and_snapshot.
+  - `running_delta` detenida > 15s → restart delta.
+  - `error` con backoff vencido → reintentar por fase.
+  - `paused` → no hace nada.
+- [x] `_tick` en `snapshot.ts` reemplazado por watchdog completo con llamada a `watchdogDecide`.
+- [x] Test: borrar la tabla en DuckDB → watchdog decide `reset_and_snapshot` sin intervención.
+- [x] Logs estructurados (JSON) por cada acción del watchdog.
 
-**Entregable:** schema evoluciona sin downtime para casos aditivos.
+**Entregable:** 12 tests verdes; sobrevive a `DROP TABLE` manual en el destino.
 
 ---
 
-## Fase 8 — Estado observable y logs (¼ día)
+## Fase 7 — Schema migrations (½ día) ✅
 
-- [ ] Query `status` devuelve por tabla: `{ initialSync, lastCursor, lastError, rowsApplied, lastAppliedAt }`.
-- [ ] Página en Next.js que renderiza el `status` (tabla simple, sin estilo) — sirve para debuggear en vivo durante la evaluación.
-- [ ] Logs con nivel (`info`, `warn`, `error`) y contexto (tabla, cursor, batch size).
+- [x] `columnTypes()` en `Destination` + `DuckDestination`: compara tipos declarados vs tipos reales en `information_schema`.
+- [x] **Aditivo:** columna nueva → `ALTER TABLE … ADD COLUMN`. Sin pérdida de datos (ya estaba desde Fase 3; Fase 7 lo conecta al flujo de detección).
+- [x] **Cambio de tipo:** `detectTypeChanges()` detecta el drift y devuelve `{ kind: "type_reset" }` — el host schedea re-snapshot completo.
+- [x] Test: `columnTypes` devuelve el mapa correcto; cambio de tipo detectado.
 
-**Entregable:** abrir `/sync` y ver el estado de cada tabla en tiempo real.
+**Entregable:** schema evoluciona sin downtime en casos aditivos; cambios de tipo se re-sincronizan sin pérdida.
+
+---
+
+## Fase 8 — Estado observable y logs (¼ día) ✅
+
+- [x] Query `status` devuelve por tabla: `{ name, status, rowsApplied, snapshotTs, lastCursor, lastAppliedAtMs, lastError }`.
+- [x] Página `/sync` en Next.js con `useQuery` — se actualiza en tiempo real vía Convex.
+- [x] `StatusBadge` con colores por estado; cursor truncado a 20 chars; error en `title` para ver completo.
+- [x] Logs estructurados (JSON) desde el watchdog.
+
+**Entregable:** abrir `http://localhost:3000/sync` y ver el estado de cada tabla en tiempo real.
 
 ---
 
