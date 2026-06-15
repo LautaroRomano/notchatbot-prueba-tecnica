@@ -35,6 +35,6 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@duckdb/node-api": "1.5.3-r.3"
+    "@notchat/destination-types": "workspace:*"
   }
 }

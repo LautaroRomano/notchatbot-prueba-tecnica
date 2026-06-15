@@ -88,6 +88,21 @@ export interface Destination {
 }
 
 /**
+ * Opciones para construir el destino. Vive acá (no en `duck.ts`) para que
+ * el componente Convex pueda importar el tipo sin arrastrar el native addon
+ * de DuckDB al bundle del isolate V8.
+ */
+export type DuckDestinationOptions =
+  | { kind: "duckdb_local"; path: string }
+  | {
+      kind: "motherduck";
+      /** Nombre de la DB en MotherDuck (sin el prefijo `md:`). */
+      database: string;
+      /** Token de MotherDuck. Se inyecta como connection option. */
+      token: string;
+    };
+
+/**
  * Mapeo de tipo lógico → SQL de DuckDB. JSON usa el tipo nativo `JSON` de
  * DuckDB (sin restricciones, indexable). Timestamps los almacenamos como
  * BIGINT (epoch ms) — Convex usa `number` y no queremos perder precisión

@@ -1,0 +1,25 @@
+{
+  "name": "@notchat/duck-destination",
+  "version": "0.0.1",
+  "description": "DuckDB / MotherDuck destination adapter usado por convex-sync-motherduck. Aislado en su propio paquete para que el bundler de Convex no intente compilar el native addon de DuckDB en el isolate V8.",
+  "type": "module",
+  "main": "./src/duck.ts",
+  "module": "./src/duck.ts",
+  "types": "./src/duck.ts",
+  "exports": {
+    ".": {
+      "types": "./src/duck.ts",
+      "default": "./src/duck.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.3-r.3",
+    "@notchat/destination-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

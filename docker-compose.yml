@@ -18,6 +18,11 @@ services:
       - "3211:3211"
     volumes:
       - ./convex-backend-data:/convex/data
+      # Volumen para el archivo .duckdb que escribe el componente
+      # convex-sync-motherduck en modo `duckdb_local`. La carpeta del host
+      # ./data/duckdb se monta como /data adentro del contenedor; el config
+      # del componente apunta a /data/local.duckdb (ver .env.example).
+      - ./data/duckdb:/data
     environment:
       - INSTANCE_NAME=notchat-local
       - INSTANCE_SECRET=${CONVEX_INSTANCE_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@notchat/duck-destination": "workspace:*",
     "convex": "^1.17.0",
     "convex-sync-motherduck": "workspace:*",
     "next": "^15.1.3",

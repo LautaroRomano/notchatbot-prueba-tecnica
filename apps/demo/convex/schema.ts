@@ -24,8 +24,6 @@ export default defineSchema({
     name: v.string(),
     phone: v.string(),
     email: v.optional(v.string()),
-    // Fecha lógica de alta — puede venir de un sistema externo (import,
-    // webhook) y no coincidir con _creationTime.
     createdAtMs: v.number(),
   })
     .index("by_tenant", ["tenantId"])
@@ -44,8 +42,6 @@ export default defineSchema({
   })
     .index("by_tenant", ["tenantId"])
     .index("by_contact", ["contactId"])
-    // Listado tipo inbox: conversaciones del tenant ordenadas por última
-    // actividad. Query: by_tenant_recent.eq(tenantId).order("desc").
     .index("by_tenant_recent", ["tenantId", "lastMessageAtMs"]),
 
   messages: defineTable({
@@ -62,9 +58,6 @@ export default defineSchema({
     tenantId: v.id("tenants"),
     key: v.string(),
     label: v.string(),
-    // El valor real vive en contactAttributes.value siempre como string;
-    // este `type` es metadata para validar/castear en código al escribir
-    // o al renderizar.
     type: v.union(
       v.literal("string"),
       v.literal("number"),

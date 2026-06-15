@@ -33,19 +33,12 @@ import {
   type CellValue,
   type ColumnDef,
   type Destination,
+  type DuckDestinationOptions,
   duckSqlType,
   type Row,
-} from "./types";
+} from "@notchat/destination-types";
 
-export type DuckDestinationOptions =
-  | { kind: "duckdb_local"; path: string }
-  | {
-      kind: "motherduck";
-      /** Nombre de la DB en MotherDuck (sin el prefijo `md:`). */
-      database: string;
-      /** Token de MotherDuck. Se inyecta como connection option. */
-      token: string;
-    };
+export type { DuckDestinationOptions } from "@notchat/destination-types";
 
 /**
  * Crea y abre un destination según las opciones. La conexión queda viva

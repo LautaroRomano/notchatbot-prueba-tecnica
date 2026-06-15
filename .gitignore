@@ -37,3 +37,6 @@ Thumbs.db
 PROGRESS.md
 **/convex/_generated/
 /packages/convex-sync-motherduck/_generated/
+
+# Archivo .duckdb local (volumen montado en el contenedor de Convex)
+/data/duckdb/

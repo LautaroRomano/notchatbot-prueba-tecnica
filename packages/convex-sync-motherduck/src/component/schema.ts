@@ -37,7 +37,13 @@ export default defineSchema({
     snapshotTs: v.optional(v.number()),
     lastError: v.optional(v.string()),
     rowsApplied: v.number(),
-  }).index("by_name", ["name"]),
+    // Timestamp del último avance (ms). El watchdog (Fase 6) usa esto para
+    // detectar tablas trabadas: si una `running_snapshot` no avanzó en N
+    // segundos, asume crash y la re-arranca.
+    lastAppliedAtMs: v.optional(v.number()),
+  })
+    .index("by_name", ["name"])
+    .index("by_status", ["status"]),
 
   // Singleton — el invariante "una sola fila" se enforcea en `config.set`
   // (no hay UNIQUE declarativo en Convex). Todos los campos opcionales

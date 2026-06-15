@@ -1,0 +1,21 @@
+{
+  "name": "@notchat/destination-types",
+  "version": "0.0.1",
+  "description": "Tipos del adapter Destination usado por convex-sync-motherduck. Sin native deps — el componente Convex importa SOLO desde acá para que el bundler V8 no choque con @duckdb/node-api.",
+  "type": "module",
+  "main": "./src/types.ts",
+  "module": "./src/types.ts",
+  "types": "./src/types.ts",
+  "exports": {
+    ".": {
+      "types": "./src/types.ts",
+      "default": "./src/types.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

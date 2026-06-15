@@ -9,6 +9,14 @@ export default defineConfig({
     ],
     environment: "edge-runtime",
     globals: false,
-    server: { deps: { inline: ["convex-test"] } },
+    server: {
+      deps: {
+        inline: [
+          "convex-test",
+          "@notchat/duck-destination",
+          "@notchat/destination-types",
+        ],
+      },
+    },
   },
 });
