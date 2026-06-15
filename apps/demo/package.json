@@ -7,8 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "convex:dev": "convex dev",
-    "convex:run": "convex run",
+    "convex:dev": "node ./scripts/run-convex.mjs dev",
+    "convex:run": "node ./scripts/run-convex.mjs run",
+    "convex:run-json": "node ./scripts/convex-run-json.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

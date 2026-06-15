@@ -14,14 +14,20 @@ Seguí este orden exacto. Cada paso depende del anterior.
 
 ## 1. Instalar dependencias
 
+Desde la **raíz** del proyecto:
+
 ```powershell
 bun install
 ```
 
-Si ves `EBUSY` o errores de caché:
+Si ves `EBUSY`, `EACCES` o `EEXIST`:
 
 ```powershell
 Remove-Item -Recurse -Force node_modules
+Remove-Item -Recurse -Force apps\demo\node_modules
+Remove-Item -Recurse -Force packages\convex-sync-motherduck\node_modules
+Remove-Item -Recurse -Force packages\destination-types\node_modules
+Remove-Item -Recurse -Force packages\duck-destination\node_modules
 bun install
 ```
 
@@ -68,11 +74,13 @@ Copiá esa key.
 
 ## 4. Crear el archivo de entorno
 
-Creá el archivo `.env.local` en la raíz del proyecto con este contenido:
+Creá el archivo `.env.local` en la **raíz** del proyecto con este contenido:
 
 ```
 CONVEX_DEPLOY_KEY=<la key que copiaste en el paso anterior>
 CONVEX_SELF_HOSTED_ADMIN_KEY=<la misma key>
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+NEXT_PUBLIC_CONVEX_URL=http://127.0.0.1:3210
 ```
 
 > `.env.local` ya está en `.gitignore` — no se commitea.
@@ -81,7 +89,7 @@ CONVEX_SELF_HOSTED_ADMIN_KEY=<la misma key>
 
 ## 5. Conectar la app al backend
 
-En una **terminal nueva** (dejala corriendo todo el tiempo):
+En una **terminal nueva** (dejala corriendo todo el tiempo), desde la raíz:
 
 ```powershell
 bun run convex:dev
@@ -89,7 +97,7 @@ bun run convex:dev
 
 La primera corrida:
 1. Se conecta al backend local
-2. Regenera el codegen en `apps/demo/convex/_generated/` y `packages/convex-sync-motherduck/_generated/`
+2. Regenera el codegen en `apps/demo/convex/_generated/`
 3. Queda en modo watch
 
 Cuando veas `✓ Convex functions ready` podés continuar.
@@ -98,7 +106,7 @@ Cuando veas `✓ Convex functions ready` podés continuar.
 
 ## 6. Correr los tests (no necesita Docker)
 
-En otra terminal:
+En otra terminal, desde la raíz:
 
 ```powershell
 bun run test
@@ -114,8 +122,10 @@ bun run typecheck    # verificar tipos — tiene que salir sin errores
 
 ## 7. Sembrar datos en Convex
 
+Desde la raíz:
+
 ```powershell
-bunx convex run seed:run
+bun run convex:run seed:run
 ```
 
 Inserta: 3 tenants / 600 contactos / 2400 mensajes / ~1800 contactAttributes.
@@ -126,15 +136,24 @@ Es idempotente — podés correrlo más de una vez sin problema.
 
 ## 8. Configurar el destino del sync
 
+En **Windows**, pasar JSON inline suele fallar porque el shell reescribe las comillas. La forma estable es un archivo JSON:
+
+1. Copiá el ejemplo:
+
 ```powershell
-bunx convex run sync:setConfig --args '{
-  "origin": "http://host.docker.internal:3210",
-  "deployKey": "<TU_CONVEX_DEPLOY_KEY>",
-  "destination": { "kind": "duckdb_local", "path": "/data/local.duckdb" }
-}'
+Copy-Item apps\demo\scripts\sync-set-config.local.json.example apps\demo\scripts\sync-set-config.local.json
 ```
 
-Reemplazá `<TU_CONVEX_DEPLOY_KEY>` con la misma key del paso 4.
+2. Abrí `apps/demo/scripts/sync-set-config.local.json` y reemplazá `REEMPLAZAR_CON_LA_KEY_DEL_PASO_4` por tu deploy key.
+
+3. Corré desde `apps/demo/`:
+
+```powershell
+cd apps\demo
+bun run convex:run-json -- sync:setConfig ./scripts/sync-set-config.local.json
+```
+
+`*.local.json` está en `.gitignore` — no se commitea.
 
 > El path `/data/local.duckdb` es adentro del container de Convex. El archivo real aparece en tu máquina en `./data/duckdb/local.duckdb`.
 
@@ -142,17 +161,10 @@ Reemplazá `<TU_CONVEX_DEPLOY_KEY>` con la misma key del paso 4.
 
 ## 9. Registrar tablas para sincronizar
 
+Desde `apps/demo/`:
+
 ```powershell
-bunx convex run sync:register --args '{
-  "tables": [
-    { "name": "contacts", "columns": [
-      {"name":"_id","type":"string"},
-      {"name":"tenantId","type":"string"},
-      {"name":"externalId","type":"string"},
-      {"name":"displayName","type":"string"}
-    ]}
-  ]
-}'
+bun run convex:run-json -- sync:register ./scripts/sync-register.local.json.example
 ```
 
 ---
@@ -166,17 +178,17 @@ En ≤10s vas a ver la tabla `contacts` pasar por estos estados:
 - `running_snapshot` → descargando las 600 filas de Convex a DuckDB
 - `running_delta` → snapshot terminó, escuchando cambios en tiempo real
 
-También podés ver el estado desde la terminal:
+También podés ver el estado desde la raíz:
 
 ```powershell
-bunx convex run sync:status
+bun run convex:run sync:status
 ```
 
 ---
 
 ## 11. Verificar los datos en DuckDB
 
-Una vez que el estado sea `running_delta`:
+Una vez que el estado sea `running_delta`, desde la raíz:
 
 ```powershell
 duckdb ./data/duckdb/local.duckdb -c "SELECT count(*) FROM contacts;"
@@ -210,11 +222,29 @@ Cuando el backend vuelva, el sync retoma desde el último cursor sin duplicar ni
 ### Idempotencia del seed
 
 ```powershell
-bunx convex run seed:run   # segunda corrida
-bunx convex run sync:status
+bun run convex:run seed:run   # segunda corrida
+bun run convex:run sync:status
 duckdb ./data/duckdb/local.duckdb -c "SELECT count(*) FROM contacts;"
 # sigue siendo 600
 ```
+
+---
+
+## Reset completo (volver al paso 0)
+
+```powershell
+docker compose down -v
+Remove-Item -Recurse -Force convex-backend-data -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force data -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force apps\demo\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force packages\convex-sync-motherduck\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force packages\destination-types\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force packages\duck-destination\node_modules -ErrorAction SilentlyContinue
+Remove-Item -Force .env.local -ErrorAction SilentlyContinue
+```
+
+Después seguí desde el paso 1.
 
 ---
 
@@ -222,9 +252,12 @@ duckdb ./data/duckdb/local.duckdb -c "SELECT count(*) FROM contacts;"
 
 | Síntoma | Fix |
 |---|---|
-| `EBUSY: failed copying files` | `Remove-Item -Recurse -Force node_modules` y `bun install` |
+| `EBUSY` / `EACCES` / `EEXIST` en `bun install` | Cerrar VS Code, borrar todos los `node_modules` (ver paso 1) y reinstalar |
+| `MODULE_NOT_FOUND convex/bin/main.js` en `bun run convex:dev` | Bug de bun en Windows — ya resuelto con el wrapper `run-convex.mjs`; si persiste, borrar todos los `node_modules` y reinstalar |
 | `Can't resolve 'convex/react'` en Next.js | `docker compose down -v && docker compose up -d` |
+| `[CONVEX Q(sync:status)] Server Error` en la UI | `bun run convex:dev` no está corriendo o no llegó a `✓ Convex functions ready` |
+| `Failed to parse arguments as JSON` / comillas en Windows | Usá el helper `bun run convex:run-json` con un `.json` en disco (pasos 8–9) |
 | `bunx convex run` da error de conexión | Verificar que `bun run convex:dev` esté corriendo con `.env.local` cargado |
 | `internal.snapshot does not exist` en typecheck | Correr `bun run convex:dev` con el backend arriba para regenerar el codegen |
 | `curl http://localhost:3210/version` no responde | El backend todavía está iniciando — esperar 15–20s |
-| Sync se queda en `pending` después de 30s | Verificar que `setConfig` se corrió con la key correcta |
+| Sync se queda en `pending` después de 30s | Verificar que `sync:setConfig` se corrió con la key correcta |

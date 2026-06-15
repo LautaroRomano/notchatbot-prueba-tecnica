@@ -14,6 +14,8 @@
  * `Destination` y pasamos los handles del ActionCtx al cliente del componente.
  */
 
+import { createRequire } from "module";
+import { pathToFileURL } from "url";
 import { v } from "convex/values";
 // NO importar `@notchat/duck-destination` estáticamente. El analizador de
 // Convex bundlea este archivo en su pass de V8 (a pesar de "use node") y se
@@ -48,8 +50,13 @@ export const _processOnePage = internalAction({
     let dst: Destination;
     try {
       // Dynamic import opaco — ver nota arriba.
-      const duckModulePath = ["@notchat", "duck-destination"].join("/");
-      const duck = (await import(duckModulePath)) as typeof import("@notchat/duck-destination");
+      // createRequire resuelve el paquete usando NODE_PATH (seteado por
+      // run-convex.mjs) y devuelve la ruta absoluta en disco. pathToFileURL
+      // la convierte a file:// URL, que es lo que ESM de Node exige para
+      // importar paquetes encontrados vía NODE_PATH.
+      const _req = createRequire(import.meta.url);
+      const duckPath = _req.resolve(["@notchat", "duck-destination"].join("/"));
+      const duck = (await import(pathToFileURL(duckPath).href)) as typeof import("@notchat/duck-destination");
       dst = await duck.createDuckDestination(configToDuckOptions(config));
     } catch (err) {
       await sync.markError(
@@ -111,8 +118,9 @@ export const _tick = internalAction({
     let dst: Destination | null = null;
     if (config?.origin && config.deployKey && config.destination) {
       try {
-        const duckModulePath = ["@notchat", "duck-destination"].join("/");
-        const duck = (await import(duckModulePath)) as typeof import("@notchat/duck-destination");
+        const _req = createRequire(import.meta.url);
+        const duckPath = _req.resolve(["@notchat", "duck-destination"].join("/"));
+        const duck = (await import(pathToFileURL(duckPath).href)) as typeof import("@notchat/duck-destination");
         dst = await duck.createDuckDestination(configToDuckOptions(config));
       } catch {
         // No podemos abrir el destino — el watchdog igualmente procesa

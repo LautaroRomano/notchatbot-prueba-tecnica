@@ -5,6 +5,9 @@ build/
 out/
 *.tsbuildinfo
 
+# JSON local para `bun run convex:run-json` (contiene deploy key)
+apps/demo/scripts/*.local.json
+
 # env
 .env
 .env.local
