@@ -137,37 +137,35 @@ Esto es **una librería**, no código de la app. Modelar como [componente oficia
 
 ---
 
-## Fase 9 — Suite de tests completa (1 día) ⭐ corte automático
+## Fase 9 — Suite de tests completa (1 día) ⭐ corte automático ✅
 
-Usando `convex-test`:
+- [x] Snapshot inicial completo (N filas → N filas iguales) — `integration/pipeline.test.ts` + `snapshot/runner.test.ts`.
+- [x] Deltas en orden (insert/update/delete) — `delta/runner.test.ts` + `integration/pipeline.test.ts`.
+- [x] Idempotencia de re-aplicación — ambos runners.
+- [x] Deletes propagados — `delta/runner.test.ts` + `integration/pipeline.test.ts`.
+- [x] Recovery tras crash en snapshot — `snapshot/runner.test.ts` + `integration/pipeline.test.ts` (con DuckDB real).
+- [x] Recovery tras crash en deltas — `delta/runner.test.ts` + `integration/pipeline.test.ts` (con DuckDB real).
+- [x] Schema migration aditiva — `destination/duck.test.ts` + `integration/pipeline.test.ts`.
+- [x] Tabla borrada en destino → self-heal — `watchdog/index.test.ts` + `integration/pipeline.test.ts` (con DuckDB real).
+- [x] Seed corrido 2×, sin duplicados — `apps/demo/convex/seed.test.ts`.
+- [ ] Burst: 1000 writes/sec por 30s → converge. **No implementado** — requiere backend real. El test de 500 filas cubre el volumen; la latencia del polling limita el burst más que la lógica.
 
-- [ ] Snapshot inicial completo (N filas → N filas iguales).
-- [ ] Deltas en orden (insert/update/delete).
-- [ ] Idempotencia de re-aplicación.
-- [ ] Deletes propagados.
-- [ ] Recovery tras crash en snapshot.
-- [ ] Recovery tras crash en deltas.
-- [ ] Schema migration aditiva.
-- [ ] Tabla borrada en destino → self-heal.
-- [ ] Seed corrido 2×, sin duplicados.
-- [ ] Burst: simular 1000 writes/sec por 30s → converge.
-
-Sección README **"Qué testeé y qué no, y por qué"** — performance/carga sostenida quedan fuera con justificación.
+**Total: 55 tests, ~5s. 7 archivos de test.**
 
 ---
 
-## Fase 10 — Documentación y entrega (½ día)
+## Fase 10 — Documentación y entrega (½ día) ✅
 
 README con:
 
-- [ ] Cómo levantar Convex local + DuckDB/MotherDuck (comandos exactos).
-- [ ] Cómo correr el seed.
-- [ ] Cómo correr los tests.
-- [ ] **Decisiones de arquitectura**: idempotencia (`ON CONFLICT`), schema migrations (aditivo vs re-snapshot), escalabilidad a 10×.
-- [ ] **Qué testeé y por qué.**
-- [ ] **Cómo se recupera de fallos** (pasos concretos por escenario).
-- [ ] **Uso de IA** — qué hizo la IA, qué hice yo.
-- [ ] Diagrama ASCII del flujo: `write → Convex → streaming_export → sink → DuckDB/MotherDuck`.
+- [x] Cómo levantar Convex local + DuckDB/MotherDuck (comandos exactos).
+- [x] Cómo correr el seed.
+- [x] Cómo correr los tests.
+- [x] **Decisiones de arquitectura**: idempotencia (`ON CONFLICT`), schema migrations (aditivo vs re-snapshot con razonamiento), escalabilidad a 10×.
+- [x] **Qué testeé y por qué** — tabla de cobertura + justificación de lo que quedó fuera.
+- [x] **Cómo se recupera de fallos** — 6 escenarios concretos con pasos exactos.
+- [x] **Uso de IA** — separación clara entre decisiones propias y trabajo delegado.
+- [x] Diagrama ASCII del flujo: `write → Convex → streaming_export → runners → DuckDB/MotherDuck`.
 
 ---
 

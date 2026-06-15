@@ -85,7 +85,7 @@ bun run dev          # http://localhost:3000
 ## Correr los tests
 
 ```bash
-bun run test         # corre todo (48 tests, ~3s)
+bun run test         # corre todo (55 tests, ~5s)
 bun run test:watch   # watch mode
 bun run typecheck    # tsc en componente + demo
 ```
@@ -196,6 +196,197 @@ bunx convex run sync:status  # rowsApplied debería seguir consistente
 ├── data/duckdb/                       ← volumen para el archivo .duckdb (gitignored)
 └── convex-backend-data/               ← datos persistentes del backend (gitignored)
 ```
+
+---
+
+## Diagrama del flujo
+
+```
+  App Convex (NotChat CRM)
+  insert / update / delete
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Convex self-hosted  (http://localhost:3210)                    │
+│                                                                 │
+│  GET /api/streaming_export/list_snapshot?tableName=&cursor=     │
+│  GET /api/streaming_export/document_deltas?tableName=&cursor=   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTP  Authorization: Convex <deployKey>
+             ┌─────────────┴──────────────┐
+             │                            │
+             ▼                            ▼
+  ┌────────────────────┐       ┌────────────────────────┐
+  │  snapshot runner   │       │     delta runner       │
+  │  list_snapshot     │       │   document_deltas      │
+  │  página por página │ ────► │  cursor = snapshotTs   │
+  │  cursor durable    │       │  insert/replace/delete │
+  └────────┬───────────┘       └────────────┬───────────┘
+           │                                │
+           └───────────────┬────────────────┘
+                           │ withTransaction (BEGIN / COMMIT / ROLLBACK)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  DuckDB / MotherDuck                                            │
+│                                                                 │
+│  CREATE TABLE … (_id VARCHAR PRIMARY KEY, …)                   │
+│  INSERT … ON CONFLICT (_id) DO UPDATE SET …  ← upserts        │
+│  DELETE FROM … WHERE _id = ?                 ← tombstones      │
+└─────────────────────────────────────────────────────────────────┘
+           ▲
+           │  cursor guardado en Convex DESPUÉS del COMMIT
+           │  → si crasheás entre COMMIT y saveProgress,
+           │    la próxima iteración re-aplica el mismo batch
+           │    idempotentemente (ON CONFLICT no duplica)
+           └──────────────────────────────────────────────────────
+```
+
+---
+
+## Decisiones de arquitectura
+
+### Idempotencia via `ON CONFLICT (_id) DO UPDATE`
+
+Convex emite `document_deltas` con semántica *exactly-once* por cursor, pero *at-least-once* entre reconexiones. La única garantía robusta es que el **destino sea idempotente**.
+
+Usamos `_id` de Convex como `PRIMARY KEY` en DuckDB. Cualquier `INSERT` que colisiona hace `UPDATE SET col = excluded.col` para todos los campos. Re-aplicar el mismo batch n veces deja el estado idéntico.
+
+Alternativa descartada: `DELETE + INSERT` dentro de la misma transacción. Más explícita pero más cara (dos statements por fila). `ON CONFLICT` es el patrón idiomático en DuckDB/PostgreSQL y es suficiente.
+
+### Schema migrations
+
+**Columna nueva (caso aditivo):** `ensureTable` compara columnas declaradas con `information_schema.columns` y ejecuta `ALTER TABLE … ADD COLUMN` para las faltantes. Las filas existentes quedan con `NULL` en la columna nueva. Sin pérdida de datos, sin re-snapshot, sin downtime.
+
+**Cambio de tipo de columna:** DuckDB no tiene `ALTER COLUMN TYPE` (requeriría recrear la tabla y un lock exclusivo). La opción implementada es **re-snapshot completo**: `resetForReSnapshot` limpia los cursores de snapshot y delta, el watchdog detecta el estado `pending` y arranca un snapshot nuevo. La decisión de tipo correcto se toma desde cero.
+
+Alternativa descartada: ignorar el cambio de tipo. Llevaría a errores silenciosos en `bindByJsType` cuando el valor no sea casteable. Preferimos el error visible (`type_reset`) a la corrupción silenciosa.
+
+### Escalabilidad a 10×
+
+El cuello de botella a 10× de datos es el **snapshot inicial**, que hoy es secuencial (una página a la vez, una tabla a la vez). Para escalar:
+
+- **Paralelizar snapshots por tabla**: el schema de `syncCursors` ya separa cursores por tabla — correr N snapshots simultáneos no requiere cambios en el componente, solo el scheduler del host.
+- **Bulk load en snapshot**: reemplazar `INSERT ON CONFLICT` por `COPY` / `INSERT INTO … SELECT` para el bulk initial load. Mucho más rápido para millones de filas.
+- **Incrementar page size**: `list_snapshot` acepta `numItems` — aumentar de 100 a 1000 reduce el número de round-trips.
+- **MotherDuck en producción**: la conexión HTTP tiene mayor latencia que DuckDB local. A 10× se paralelizarían los writes por tabla. La arquitectura de tres paquetes ya permite swapear la implementación del `Destination` sin tocar el componente.
+
+Los **deltas escalan bien** por diseño: `document_deltas` es incremental — el tamaño de cada batch crece con el write rate, no con el total de filas. El runner procesa un batch a la vez; si el batch se vuelve muy grande, se puede particionar el cursor antes de commitear.
+
+---
+
+## Qué testeé y por qué
+
+### Lo que sí testeé
+
+| Caso | Dónde | Por qué es crítico |
+|---|---|---|
+| Snapshot multi-página | `snapshot/runner.test.ts` + `integration/pipeline.test.ts` | El cursor debe avanzar correctamente entre páginas |
+| Recovery tras crash (snapshot) | Ambos archivos | Es el corte automático de la prueba — falla aquí y no hay entrega |
+| Recovery tras crash (delta) | `delta/runner.test.ts` + `integration/pipeline.test.ts` | Mismo invariante que snapshot; DuckDB real confirma el `ON CONFLICT` |
+| Insert → update → delete en orden | Ambos runners | El orden importa; un delete de una fila que no existe es no-op silencioso |
+| Idempotencia (snapshot y delta) | Ambos runners | At-least-once delivery requiere que re-aplicar sea inocuo |
+| Schema estricto (descartar extras) | Ambos runners | Predecibilidad — el destino solo contiene lo declarado |
+| Schema migration aditiva | `destination/duck.test.ts` + `integration/pipeline.test.ts` | `ALTER ADD COLUMN` con DuckDB real confirma que los datos viejos sobreviven |
+| Detección de cambio de tipo | `destination/duck.test.ts` | Sin esta detección, `bindByJsType` falla silenciosamente |
+| Self-heal (DROP TABLE) | `watchdog/index.test.ts` + `integration/pipeline.test.ts` | Con `tableExists` de DuckDB real — reproduce el escenario que la prueba va a ejecutar |
+| Todos los estados del watchdog | `watchdog/index.test.ts` (12 casos) | La función pura `watchdogDecide` es la lógica de decisión central |
+| Seed idempotente | `apps/demo/convex/seed.test.ts` | Corte automático de la prueba |
+
+### Lo que no testeé y por qué
+
+**Test e2e contra Convex real + DuckDB real**: requiere el backend Docker arriba. No quiero que `bun run test` dependa de Docker — en CI sin Docker los tests fallarían. La integración entre el layer de Convex y el layer de DuckDB está cubierta en dos capas: `convex-test` para las mutations, DuckDB real para el adapter. La brecha restante (el wiring entre ambos en las actions del host) es ~30 líneas de boilerplate.
+
+**Burst sostenido (1000 writes/sec por 30s)**: es un test de performance/carga, no de correctness. El runner no tiene ningún límite artificial — el cuello de botella es la latencia de DuckDB/MotherDuck, que varía por entorno. El test de 500 filas en una página (`integration/pipeline.test.ts`) verifica que no hay límite práctico en el tamaño del batch. El burst sostenido requiere un backend real y tiempo de observación — queda fuera de una suite offline.
+
+**Tests de la UI (`/sync` page)**: la página es un `useQuery` que renderiza un array. Testearla requiere un DOM y un servidor WebSocket de Convex. El riesgo de regresión es mínimo dado que la lógica está en el hook (que tiene su propio test layer en Convex) y no en el render.
+
+**Tests de las actions del host** (`snapshot.ts`, `delta.ts`): son ~30 líneas de wiring que conectan el runner (testeado) con DuckDB (testeado) y el scheduler de Convex. Mockear el scheduler añade complejidad sin aumentar la confianza en la lógica de negocio, que está 100% en el runner.
+
+---
+
+## Cómo se recupera de fallos
+
+### Escenario 1: crash en medio de un snapshot
+
+```
+Estado antes: status=running_snapshot, cursor=C1 en Convex, DuckDB tiene filas hasta C1.
+```
+
+1. El cron `_tick` vuelve a correr en ≤10s.
+2. `watchdogDecide` ve `running_snapshot` con `lastAppliedAtMs` hace >120s → `start_snapshot`.
+3. `_processOnePage` carga `cursor=C1` desde `syncCursors`.
+4. Pide la misma página (desde C1) al endpoint.
+5. Filas ya existentes en DuckDB → `ON CONFLICT` → `UPDATE` (no duplica).
+6. Filas nuevas → `INSERT`.
+7. Cursor avanza a C2, ciclo continúa hasta `hasMore=false`.
+
+**Resultado:** cero pérdida de datos, cero duplicados.
+
+### Escenario 2: crash en medio de un batch de deltas
+
+```
+Estado antes: cursor=D1 en Convex. DuckDB tiene los cambios hasta D1 commiteados.
+Crash: entre el COMMIT de DuckDB y el saveProgress de Convex.
+```
+
+1. Cursor sigue siendo D1 en Convex (el `saveProgress` no llegó a ejecutarse).
+2. `watchdogDecide` ve `running_delta` detenida >15s → `start_delta`.
+3. `_processDeltaBatch` carga cursor=D1, re-fetchea el mismo batch.
+4. `ON CONFLICT` y `DELETE` son idempotentes → mismo estado que sin crash.
+5. `saveProgress` guarda D2 exitosamente.
+
+**Resultado:** sin pérdida, sin duplicación.
+
+### Escenario 3: DROP TABLE manual en DuckDB
+
+1. `watchdogDecide` llama `dst.tableExists("contacts")` → `false`.
+2. Status es `running_delta` → acción `reset_and_snapshot`.
+3. `_tick` llama `sync.resetForReSnapshot`: limpia cursors de snapshot y delta en `syncCursors`, `status=pending`.
+4. En el próximo tick, `_processOnePage` arranca snapshot desde cero.
+5. En ≤10s la tabla existe de nuevo con todos los datos.
+
+### Escenario 4: DuckDB / MotherDuck caído durante deltas
+
+1. `_processDeltaBatch` lanza error → `sync.markError` guarda el mensaje, `status=error`.
+2. `watchdogDecide` ve `error` con `lastAppliedAtMs` hace <30s → backoff activo → no hace nada.
+3. A los 30s el backoff vence → `start_delta` (o `start_snapshot` si nunca terminó el snapshot).
+4. DuckDB volvió → el batch pendiente se aplica y el stream continúa.
+
+**El cursor nunca avanzó** durante el downtime — no hay ventana de datos perdidos.
+
+### Escenario 5: burst de writes durante snapshot activo
+
+`list_snapshot` usa un `snapshotTs` fijo — las páginas reflejan el estado *al momento de iniciar el snapshot*. Los writes que llegan mientras el snapshot corre no aparecen en las páginas del snapshot, pero sí en `document_deltas` a partir de ese `snapshotTs`.
+
+Cuando el snapshot termina, el cursor de delta arranca en `snapshotTs` → captura **todos** los cambios post-snapshot. No hay ventana de datos perdidos.
+
+### Escenario 6: cambio de schema (columna nueva o cambio de tipo)
+
+**Columna nueva:** `ensureTable` detecta la columna faltante → `ALTER TABLE ADD COLUMN`. Los deltas que llegan con el campo nuevo se insertan correctamente. Sin downtime, sin re-snapshot.
+
+**Cambio de tipo:** `detectTypeChanges` detecta el drift → `processOneDeltaBatch` devuelve `{ kind: "type_reset" }` → la action llama `resetForReSnapshot` y schedea un snapshot nuevo. La tabla se reconstruye desde Convex con el tipo correcto.
+
+---
+
+## Uso de IA
+
+### Qué hizo la IA (Claude Code, modelo `claude-sonnet-4-6`)
+
+- Implementó el grueso del código: runners de snapshot y delta, watchdog, clientes HTTP, adapter DuckDB/MotherDuck, schema + mutations + queries del componente Convex, actions del host, página `/sync`, y los tests.
+- Diagnosticó y resolvió el "plot twist" del bundler V8 de Convex con native deps: propuso la arquitectura de tres paquetes en workspace y el dynamic import opaco (`["@notchat","duck-destination"].join("/")`).
+- Diseñó la separación runner puro / IO / Destination que hace todo testeable sin levantar nada.
+- Escribió los documentos (WALKTHROUGH, PROGRESS, ROADMAP, este README).
+
+### Qué hice yo (Lautaro)
+
+- Definí la dirección de cada fase y validé que lo construido tiene sentido.
+- Diagnostiqué bugs visuales de setup (archivos `.jsx`/`.d.ts` generados por `composite: true` sin `outDir`).
+- Decidí que el schema estricto (descartar campos no declarados con warning) era el comportamiento correcto.
+- Revisé la arquitectura CRM: separación `openedAtMs`/`lastMessageAtMs`, índice `by_tenant_recent`.
+- Revisé y acepté las propuestas de arquitectura del componente.
+- Ejecuté los comandos contra el backend real para validar end-to-end.
+
+**En resumen:** la IA fue el implementador, yo fui el arquitecto y el validador. Las decisiones de qué construir y por qué fueron mías; la ejecución de cada paso fue de la IA con mi supervisión.
 
 ---
 
