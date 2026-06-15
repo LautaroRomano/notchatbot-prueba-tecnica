@@ -368,6 +368,103 @@ Cuando el snapshot termina, el cursor de delta arranca en `snapshotTs` → captu
 
 ---
 
+## Uso de IA
+
+**Herramienta:** Claude Code (`sonnet-4-6`) a lo largo de todas las fases.
+
+### Lo que hice yo (Lautaro)
+
+**Fase 0 — Arquitectura inicial**
+
+- Elegí Bun, Docker y la arquitectura basada en monorepo.
+- Diagnostiqué la generación de archivos `.jsx` y `.d.ts` provocada por `composite: true` sin `outDir`.
+
+**Fase 1.5 — Revisión del schema CRM**
+
+- Revisé críticamente el schema CRM.
+- Separé `openedAtMs` de `lastMessageAtMs`.
+- Agregué el índice `by_tenant_recent`.
+- Documenté las invariantes de unicidad.
+
+**Fase 3 — Diseño del adaptador DuckDB/MotherDuck**
+
+- Definí la estructura y las responsabilidades del adaptador.
+- Validé el manejo de transacciones, la estrategia de `ON CONFLICT` y la serialización de datos.
+
+**Fase 4 — Definición del schema y arquitectura**
+
+- Definí un schema estricto: los campos no declarados se descartan mostrando un warning en lugar de aceptarse silenciosamente.
+- Analicé y resolví el problema de arquitectura que llevó a dividir la solución en tres paquetes (`destination-types`, `duck-destination`, `convex-sync-motherduck`) y a utilizar imports dinámicos opacos.
+
+**Fase 6 — Estrategia del watchdog**
+
+- Validé la lógica del watchdog, sus estados posibles y la estrategia de recuperación ante errores y re-sincronizaciones.
+
+**Fase 7 — Migraciones de schema**
+
+- Revisé y aprobé la estrategia para detectar cambios en los tipos de columnas y reiniciar sincronizaciones cuando fuese necesario.
+
+**Fase 8 — Interfaz `/sync`**
+
+- Definí los criterios de visualización del dashboard, incluyendo estados, indicadores y experiencia de usuario.
+
+**Todas las fases**
+
+- Dirigí la implementación de cada fase.
+- Validé las decisiones de arquitectura.
+- Revisé críticamente el código generado.
+- Ejecuté y probé los comandos contra el backend real.
+
+### Lo que hizo la IA
+
+**Fase 0–2 — Setup y estructura**
+
+- Generó el scaffolding del monorepo.
+- Configuró TypeScript en modo estricto.
+- Implementó el schema del componente (`syncedTables`, `syncConfig`, `syncCursors`).
+- Creó la API pública de `MotherduckSync`.
+- Realizó tareas de housekeeping (`noEmit`, `.gitignore`, exclusión de tests del typecheck).
+
+**Fase 3 — Adapter DuckDB/MotherDuck**
+
+- Implementó `DuckDestination` con `ensureTable`, `applyBatch` (`ON CONFLICT`), `applyDeletes`, `withTransaction`, whitelist de identificadores, serialización JSON y 12 tests unitarios.
+
+**Fase 4 — Snapshot inicial**
+
+- Implementó el cliente HTTP `list_snapshot`.
+- Creó el runner con inyección de dependencias.
+- Implementó las mutations (`_loadSnapshotProgress`, `_saveSnapshotProgress`, `_markSnapshotDone`).
+- Implementó la action `"use node"` y el cron correspondiente.
+
+**Fase 5 — Stream de deltas**
+
+- Implementó el cliente HTTP `document_deltas`.
+- Creó el runner de deltas con separación entre upserts y tombstones.
+- Implementó las mutations (`_loadDeltaProgress`, `_saveDeltaProgress`).
+- Implementó la action `_processDeltaBatch`.
+
+**Fase 6 — Watchdog**
+
+- Implementó `watchdogDecide`.
+- Implementó las mutations (`_listTablesForWatchdog`, `_resetForReSnapshot`).
+- Reemplazó el tick básico por un watchdog completo con logs estructurados en JSON.
+
+**Fase 7 — Schema migrations**
+
+- Implementó `columnTypes()`, `detectTypeChanges()` y el manejo de `type_reset` tanto para snapshots como para deltas.
+
+**Fase 8 — UI `/sync`**
+
+- Implementó `ConvexClientProvider`, la página `/sync`, `StatusBadge`, estados de carga y estados vacíos.
+
+**Fase 9 — Tests de integración**
+
+- Implementó `tests/component/integration/pipeline.test.ts` con 7 pruebas conectando los runners contra DuckDB real (`:memory:`).
+
+**Fase 10 — Documentación**
+
+- Redactó `WALKTHROUGH`, `PROGRESS`, `ROADMAP` y este README.
+
 ## Troubleshooting
 
 | Síntoma | Causa probable | Fix |
