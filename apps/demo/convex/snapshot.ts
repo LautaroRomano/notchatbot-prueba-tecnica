@@ -66,8 +66,12 @@ export const _processOnePage = internalAction({
         await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
           tableName,
         });
+      } else {
+        // Snapshot completo — arrancar el stream de deltas de inmediato.
+        await ctx.scheduler.runAfter(0, (internal as any).delta._processDeltaBatch, {
+          tableName,
+        });
       }
-      // Si `done`, terminó el snapshot: Fase 5 (deltas) toma desde acá.
     } catch (err) {
       await sync.markError(ctx, tableName, errMsg(err));
     } finally {
@@ -77,16 +81,25 @@ export const _processOnePage = internalAction({
 });
 
 /**
- * Cron tick: lista tablas pending y schedulea procesamiento por cada una.
- * Provisorio — Fase 6 va a expandirlo a watchdog completo (reintentos con
- * backoff, detección de jobs trabados, detección de tabla borrada en destino).
+ * Cron tick: arranca snapshots de tablas `pending` y retoma el delta stream
+ * de tablas `running_delta` que se detuvieron (idle o error transitorio).
+ * Fase 6 expande esto a watchdog completo con backoff y detección de tabla
+ * borrada en destino.
  */
 export const _tick = internalAction({
   args: {},
   handler: async (ctx) => {
+    // Snapshots pendientes.
     const pending = await sync.listPendingTables(ctx);
     for (const name of pending) {
       await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
+        tableName: name,
+      });
+    }
+    // Delta streams que necesitan retomarse.
+    const runningDelta = await sync.listRunningDeltaTables(ctx);
+    for (const name of runningDelta) {
+      await ctx.scheduler.runAfter(0, (internal as any).delta._processDeltaBatch, {
         tableName: name,
       });
     }

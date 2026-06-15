@@ -11,6 +11,11 @@ import {
   type ProcessPageResult,
   type SnapshotIO,
 } from "../snapshot/runner";
+import {
+  processDeltaBatch,
+  type DeltaIO,
+  type ProcessDeltaResult,
+} from "../delta/runner";
 
 export const VERSION = "0.1.0";
 
@@ -72,6 +77,10 @@ type ComponentRef = {
     _saveSnapshotProgress: any;
     _markSnapshotDone: any;
     _markError: any;
+    // Delta stream — Fase 5
+    _loadDeltaProgress: any;
+    _saveDeltaProgress: any;
+    _listRunningDeltaNames: any;
   };
 };
 
@@ -201,6 +210,76 @@ export class MotherduckSync {
       io,
     });
   }
+
+  // -------- API de delta stream — Fase 5 ------------------------------------
+
+  /** Devuelve los nombres de tablas con `status: "running_delta"`. */
+  async listRunningDeltaTables(ctx: GenericActionCtx<any>): Promise<string[]> {
+    return await ctx.runQuery(
+      this.component.tables._listRunningDeltaNames,
+      {},
+    );
+  }
+
+  /**
+   * Procesa UN batch de deltas para `tableName` usando el `destination`
+   * provisto por el caller. Devuelve `"more"` si quedan cambios pendientes,
+   * o `"idle"` si alcanzamos el live-head (no hay más cambios por ahora).
+   */
+  async processOneDeltaBatch(
+    ctx: GenericActionCtx<any>,
+    tableName: string,
+    destination: Destination,
+  ): Promise<ProcessDeltaResult> {
+    const config = (await ctx.runQuery(this.component.config.get, {})) as
+      | SyncConfig
+      | null;
+    if (!config?.origin || !config?.deployKey) {
+      throw new Error(
+        "syncConfig incomplete: origin and deployKey are required",
+      );
+    }
+
+    const progress = (await ctx.runQuery(
+      this.component.tables._loadDeltaProgress,
+      { tableName },
+    )) as {
+      columns: ReadonlyArray<{ name: string; type: string }>;
+      cursor: string;
+      rowsApplied: number;
+    };
+
+    const io: DeltaIO = {
+      loadProgress: async () => ({
+        cursor: progress.cursor,
+        rowsApplied: progress.rowsApplied,
+      }),
+      saveProgress: async (_t, p) => {
+        await ctx.runMutation(this.component.tables._saveDeltaProgress, {
+          tableName,
+          cursor: p.cursor,
+          rowsApplied: p.rowsApplied,
+        });
+      },
+      logWarning: (message, c) => {
+        console.warn(`[motherduck-sync] ${message}`, c);
+      },
+    };
+
+    return processDeltaBatch({
+      origin: config.origin,
+      deployKey: config.deployKey,
+      table: {
+        name: tableName,
+        columns: progress.columns as ReadonlyArray<{
+          name: string;
+          type: any;
+        }>,
+      },
+      destination,
+      io,
+    });
+  }
 }
 
 // Re-exports útiles para que el host pueda importar tipos sin saltar paquetes.
@@ -209,3 +288,4 @@ export type {
   DuckDestinationOptions,
 } from "@notchat/destination-types";
 export type { ProcessPageResult, SnapshotIO } from "../snapshot/runner";
+export type { ProcessDeltaResult, DeltaIO } from "../delta/runner";

@@ -192,6 +192,102 @@ export const _markSnapshotDone = mutation({
   },
 });
 
+// ============================================================================
+// Delta stream — Fase 5
+// ============================================================================
+
+/**
+ * Carga el progreso actual del stream de deltas para una tabla.
+ * Si todavía no hay cursor delta guardado, devuelve `snapshotTs.toString()`
+ * como cursor inicial (es el punto de entrada válido para `document_deltas`).
+ */
+export const _loadDeltaProgress = query({
+  args: { tableName: v.string() },
+  handler: async (ctx, { tableName }) => {
+    const row = await ctx.db
+      .query("syncedTables")
+      .withIndex("by_name", (q) => q.eq("name", tableName))
+      .unique();
+    if (!row) throw new Error(`Table not registered: ${tableName}`);
+    if (row.snapshotTs === undefined) {
+      throw new Error(
+        `Table ${tableName} has no snapshotTs — snapshot not complete`,
+      );
+    }
+
+    const deltaCursor = await ctx.db
+      .query("syncCursors")
+      .withIndex("by_table_kind", (q) =>
+        q.eq("tableName", tableName).eq("kind", "delta"),
+      )
+      .unique();
+
+    return {
+      columns: row.columns,
+      // Primera llamada: cursor = String(snapshotTs) como exige el endpoint.
+      cursor: deltaCursor?.cursor ?? String(row.snapshotTs),
+      rowsApplied: row.rowsApplied,
+    };
+  },
+});
+
+/**
+ * Persiste el cursor delta + count tras aplicar exitosamente un batch.
+ * Upsert sobre `syncCursors(kind: "delta")` y actualiza `syncedTables`.
+ */
+export const _saveDeltaProgress = mutation({
+  args: {
+    tableName: v.string(),
+    cursor: v.string(),
+    rowsApplied: v.number(),
+  },
+  handler: async (ctx, { tableName, cursor, rowsApplied }) => {
+    const row = await ctx.db
+      .query("syncedTables")
+      .withIndex("by_name", (q) => q.eq("name", tableName))
+      .unique();
+    if (!row) throw new Error(`Table not registered: ${tableName}`);
+
+    await ctx.db.patch(row._id, {
+      lastCursor: cursor,
+      rowsApplied,
+      lastAppliedAtMs: Date.now(),
+      lastError: undefined,
+    });
+
+    const existing = await ctx.db
+      .query("syncCursors")
+      .withIndex("by_table_kind", (q) =>
+        q.eq("tableName", tableName).eq("kind", "delta"),
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { cursor });
+    } else {
+      await ctx.db.insert("syncCursors", {
+        tableName,
+        kind: "delta",
+        cursor,
+      });
+    }
+  },
+});
+
+/**
+ * Lista tablas con `status: "running_delta"`. El tick las usa para (re)arrancar
+ * el stream si se detuvo (idle o error transitorio).
+ */
+export const _listRunningDeltaNames = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("syncedTables")
+      .withIndex("by_status", (q) => q.eq("status", "running_delta"))
+      .collect();
+    return rows.map((r) => r.name);
+  },
+});
+
 /**
  * Marca la tabla en `error` con el mensaje. NO toca el cursor — la próxima
  * reanudación retoma desde el último cursor commiteado. El watchdog (Fase 6)
