@@ -311,3 +311,61 @@ export const _markError = mutation({
     });
   },
 });
+
+// ============================================================================
+// Watchdog — Fase 6
+// ============================================================================
+
+/**
+ * Devuelve el estado de TODAS las tablas en el formato que necesita el
+ * watchdog para decidir qué acciones tomar.
+ */
+export const _listTablesForWatchdog = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("syncedTables").collect();
+    return rows.map((r) => ({
+      name: r.name,
+      status: r.status,
+      lastAppliedAtMs: r.lastAppliedAtMs,
+      snapshotTs: r.snapshotTs,
+      lastError: r.lastError,
+    }));
+  },
+});
+
+/**
+ * Resetea una tabla a `pending` para forzar un re-snapshot completo.
+ * Se usa cuando el watchdog detecta que la tabla fue borrada del destino.
+ * Borra AMBOS cursores (snapshot y delta) para empezar de cero.
+ */
+export const _resetForReSnapshot = mutation({
+  args: { tableName: v.string() },
+  handler: async (ctx, { tableName }) => {
+    const row = await ctx.db
+      .query("syncedTables")
+      .withIndex("by_name", (q) => q.eq("name", tableName))
+      .unique();
+    if (!row) return;
+
+    await ctx.db.patch(row._id, {
+      status: "pending",
+      lastCursor: undefined,
+      snapshotTs: undefined,
+      lastError: undefined,
+      rowsApplied: 0,
+      lastAppliedAtMs: undefined,
+    });
+
+    // Borrar cursores de ambas fases.
+    for (const kind of ["snapshot", "delta"] as const) {
+      const cursor = await ctx.db
+        .query("syncCursors")
+        .withIndex("by_table_kind", (q) =>
+          q.eq("tableName", tableName).eq("kind", kind),
+        )
+        .unique();
+      if (cursor) await ctx.db.delete(cursor._id);
+    }
+  },
+});

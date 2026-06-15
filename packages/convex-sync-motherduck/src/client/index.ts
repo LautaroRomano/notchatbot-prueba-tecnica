@@ -16,6 +16,7 @@ import {
   type DeltaIO,
   type ProcessDeltaResult,
 } from "../delta/runner";
+import type { WatchdogTableState } from "../watchdog/index";
 
 export const VERSION = "0.1.0";
 
@@ -81,6 +82,9 @@ type ComponentRef = {
     _loadDeltaProgress: any;
     _saveDeltaProgress: any;
     _listRunningDeltaNames: any;
+    // Watchdog — Fase 6
+    _listTablesForWatchdog: any;
+    _resetForReSnapshot: any;
   };
 };
 
@@ -280,6 +284,31 @@ export class MotherduckSync {
       io,
     });
   }
+
+  // -------- API de watchdog — Fase 6 ----------------------------------------
+
+  /** Devuelve el estado de todas las tablas para que el watchdog decida. */
+  async listTablesForWatchdog(
+    ctx: GenericActionCtx<any>,
+  ): Promise<WatchdogTableState[]> {
+    return await ctx.runQuery(
+      this.component.tables._listTablesForWatchdog,
+      {},
+    );
+  }
+
+  /**
+   * Resetea una tabla a `pending` para forzar un re-snapshot completo.
+   * El watchdog llama esto cuando detecta que la tabla fue borrada del destino.
+   */
+  async resetForReSnapshot(
+    ctx: GenericActionCtx<any>,
+    tableName: string,
+  ): Promise<void> {
+    await ctx.runMutation(this.component.tables._resetForReSnapshot, {
+      tableName,
+    });
+  }
 }
 
 // Re-exports útiles para que el host pueda importar tipos sin saltar paquetes.
@@ -289,3 +318,5 @@ export type {
 } from "@notchat/destination-types";
 export type { ProcessPageResult, SnapshotIO } from "../snapshot/runner";
 export type { ProcessDeltaResult, DeltaIO } from "../delta/runner";
+export type { WatchdogTableState, WatchdogAction, WatchdogConfig } from "../watchdog/index";
+export { watchdogDecide } from "../watchdog/index";

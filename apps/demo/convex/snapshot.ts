@@ -26,7 +26,7 @@ import type {
   DuckDestinationOptions,
   SyncConfig,
 } from "convex-sync-motherduck";
-import { MotherduckSync } from "convex-sync-motherduck";
+import { MotherduckSync, watchdogDecide } from "convex-sync-motherduck";
 import { components, internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
@@ -81,27 +81,75 @@ export const _processOnePage = internalAction({
 });
 
 /**
- * Cron tick: arranca snapshots de tablas `pending` y retoma el delta stream
- * de tablas `running_delta` que se detuvieron (idle o error transitorio).
- * Fase 6 expande esto a watchdog completo con backoff y detección de tabla
- * borrada en destino.
+ * Watchdog / cron tick — corre cada 10 segundos (ver crons.ts).
+ *
+ * Delega la lógica de decisión en `watchdogDecide` (puro, testeable).
+ * Acá solo ejecutamos las acciones que devuelve: schedulear jobs y llamar
+ * mutations de reset. Logs estructurados para que durante la evaluación
+ * sea fácil ver qué está haciendo el watchdog.
  */
 export const _tick = internalAction({
   args: {},
   handler: async (ctx) => {
-    // Snapshots pendientes.
-    const pending = await sync.listPendingTables(ctx);
-    for (const name of pending) {
-      await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
-        tableName: name,
-      });
+    const config = await sync.getConfig(ctx);
+    const tables = await sync.listTablesForWatchdog(ctx);
+
+    if (tables.length === 0) return;
+
+    // Abrir destino solo si hay config completa (para tableExists).
+    let dst: Destination | null = null;
+    if (config?.origin && config.deployKey && config.destination) {
+      try {
+        const duckModulePath = ["@notchat", "duck-destination"].join("/");
+        const duck = (await import(duckModulePath)) as typeof import("@notchat/duck-destination");
+        dst = await duck.createDuckDestination(configToDuckOptions(config));
+      } catch {
+        // No podemos abrir el destino — el watchdog igualmente procesa
+        // pending/error/stuck sin la comprobación de tableExists.
+      }
     }
-    // Delta streams que necesitan retomarse.
-    const runningDelta = await sync.listRunningDeltaTables(ctx);
-    for (const name of runningDelta) {
-      await ctx.scheduler.runAfter(0, (internal as any).delta._processDeltaBatch, {
-        tableName: name,
-      });
+
+    try {
+      const actions = await watchdogDecide(tables, dst, Date.now());
+
+      for (const action of actions) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            event: "watchdog_action",
+            kind: action.kind,
+            table: action.tableName,
+            reason: action.reason,
+          }),
+        );
+
+        switch (action.kind) {
+          case "start_snapshot":
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any).snapshot._processOnePage,
+              { tableName: action.tableName },
+            );
+            break;
+          case "start_delta":
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any).delta._processDeltaBatch,
+              { tableName: action.tableName },
+            );
+            break;
+          case "reset_and_snapshot":
+            await sync.resetForReSnapshot(ctx, action.tableName);
+            await ctx.scheduler.runAfter(
+              0,
+              (internal as any).snapshot._processOnePage,
+              { tableName: action.tableName },
+            );
+            break;
+        }
+      }
+    } finally {
+      if (dst) await dst.close();
     }
   },
 });
