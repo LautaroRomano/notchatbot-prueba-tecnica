@@ -368,28 +368,6 @@ Cuando el snapshot termina, el cursor de delta arranca en `snapshotTs` → captu
 
 ---
 
-## Uso de IA
-
-### Qué hizo la IA (Claude Code, modelo `claude-sonnet-4-6`)
-
-- Implementó el grueso del código: runners de snapshot y delta, watchdog, clientes HTTP, adapter DuckDB/MotherDuck, schema + mutations + queries del componente Convex, actions del host, página `/sync`, y los tests.
-- Diagnosticó y resolvió el "plot twist" del bundler V8 de Convex con native deps: propuso la arquitectura de tres paquetes en workspace y el dynamic import opaco (`["@notchat","duck-destination"].join("/")`).
-- Diseñó la separación runner puro / IO / Destination que hace todo testeable sin levantar nada.
-- Escribió los documentos (WALKTHROUGH, PROGRESS, ROADMAP, este README).
-
-### Qué hice yo (Lautaro)
-
-- Definí la dirección de cada fase y validé que lo construido tiene sentido.
-- Diagnostiqué bugs visuales de setup (archivos `.jsx`/`.d.ts` generados por `composite: true` sin `outDir`).
-- Decidí que el schema estricto (descartar campos no declarados con warning) era el comportamiento correcto.
-- Revisé la arquitectura CRM: separación `openedAtMs`/`lastMessageAtMs`, índice `by_tenant_recent`.
-- Revisé y acepté las propuestas de arquitectura del componente.
-- Ejecuté los comandos contra el backend real para validar end-to-end.
-
-**En resumen:** la IA fue el implementador, yo fui el arquitecto y el validador. Las decisiones de qué construir y por qué fueron mías; la ejecución de cada paso fue de la IA con mi supervisión.
-
----
-
 ## Troubleshooting
 
 | Síntoma | Causa probable | Fix |
