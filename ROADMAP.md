@@ -67,18 +67,18 @@ Esto es **una librería**, no código de la app. Modelar como [componente oficia
 
 ---
 
-## Fase 4 — Snapshot inicial (1 día) ⭐ corte automático
+## Fase 4 — Snapshot inicial (1 día) ⭐ corte automático ✅ (parcial)
 
-- [ ] Action interna `runSnapshot(tableName)`:
-  1. Si no hay cursor → arrancar de cero, status `running`.
-  2. Loop: `list_snapshot?tableName=…&cursor=…` → `applyBatch` en destino → **guardar cursor antes de pedir la siguiente página**.
-  3. Cuando `hasMore: false` → guardar `snapshotTs`, status `done`, listo para deltas.
-- [ ] Cursor se persiste en Convex (`syncCursors`), no en memoria.
-- [ ] Reanudación: si el proceso muere, al reiniciar arranca desde `lastCursor`.
-- [ ] Test: 500 contactos sembrados → snapshot → DuckDB tiene exactamente 500 filas iguales.
-- [ ] Test de recovery: matar el snapshot a mitad (mockear fallo en página 3) → reanudar → resultado final idéntico al ininterrumpido.
+- [x] Cliente de `list_snapshot` con validación defensiva del shape.
+- [x] Runner puro de UNA página con inyección de deps (Destination, IO).
+- [x] Cursor persistido en `syncCursors`, count + status en `syncedTables`.
+- [x] Action `"use node"` en el host con self-scheduling por página.
+- [x] Cron tick (10s) que arranca `pending`.
+- [x] Tests del runner con fakes: snapshot multi-página, recovery tras crash entre commit y saveProgress, schema estricto descarta extras, hasMore=false sin snapshotTs revienta.
+- [ ] **Pendiente para Fase 9**: test end-to-end con Convex real + DuckDB real (500 contactos sembrados → snapshot → contar). Requiere backend Docker arriba.
+- [ ] **Pendiente**: documentar el boilerplate del host (snapshot.ts + crons.ts) en el README al final.
 
-**Entregable:** correr `register` y ver las tablas pobladas en DuckDB.
+**Entregable parcial:** la cadena snapshot → DuckDB existe y se puede verificar end-to-end al levantar Docker.
 
 ---
 
