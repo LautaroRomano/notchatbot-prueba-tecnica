@@ -249,6 +249,7 @@ export const _saveDeltaProgress = mutation({
     if (!row) throw new Error(`Table not registered: ${tableName}`);
 
     await ctx.db.patch(row._id, {
+      status: "running_delta",
       lastCursor: cursor,
       rowsApplied,
       lastAppliedAtMs: Date.now(),

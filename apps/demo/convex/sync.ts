@@ -61,3 +61,18 @@ export const status = query({
   args: {},
   handler: (ctx) => sync.status(ctx),
 });
+
+/** Resetea todas las tablas a `pending` para forzar re-snapshot desde cero. */
+export const resetAll = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const tables = await sync.status(ctx);
+    for (const t of tables) {
+      await ctx.runMutation(
+        (components.motherduckSync as any).tables._resetForReSnapshot,
+        { tableName: t.name },
+      );
+    }
+    return { reset: tables.map((t) => t.name) };
+  },
+});

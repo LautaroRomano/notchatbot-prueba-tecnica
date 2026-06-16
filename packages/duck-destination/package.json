@@ -3,11 +3,12 @@
   "version": "0.0.1",
   "description": "DuckDB / MotherDuck destination adapter usado por convex-sync-motherduck. Aislado en su propio paquete para que el bundler de Convex no intente compilar el native addon de DuckDB en el isolate V8.",
   "type": "module",
-  "main": "./dist/duck.js",
+  "main": "./dist/duck.cjs",
   "module": "./dist/duck.js",
   "types": "./src/duck.ts",
   "exports": {
     ".": {
+      "require": "./dist/duck.cjs",
       "types": "./src/duck.ts",
       "default": "./dist/duck.js"
     }

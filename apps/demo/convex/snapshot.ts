@@ -15,14 +15,18 @@
  */
 
 import { createRequire } from "module";
-import { pathToFileURL } from "url";
 import { v } from "convex/values";
 // NO importar `@notchat/duck-destination` estáticamente. El analizador de
 // Convex bundlea este archivo en su pass de V8 (a pesar de "use node") y se
-// rompe resolviendo los .node binaries del native addon. Lo cargamos vía
-// `await import(path)` con `path` armado en runtime — esbuild no puede
-// seguir esos imports, así que el bundle V8 queda limpio. En runtime
-// Convex corre el handler en su runtime Node, donde require del .node anda.
+// rompe resolviendo los .node binaries del native addon.
+//
+// Usamos `createRequire` para cargar el paquete vía CJS require() en lugar
+// de ESM import(). La diferencia clave: CJS require() SOPORTA NODE_PATH,
+// que el runtime de Convex local SÍ propaga a los workers (a diferencia de
+// variables de entorno custom como CONVEX_DUCK_PATH). El paquete se compiló
+// como CJS (.cjs) para que Node.js lo acepte aunque el package tenga
+// `"type": "module"`. esbuild no puede seguir `_req(computed_string)` así
+// que el bundle V8 queda limpio del native addon.
 import type {
   Destination,
   DuckDestinationOptions,
@@ -49,14 +53,9 @@ export const _processOnePage = internalAction({
 
     let dst: Destination;
     try {
-      // Dynamic import opaco — ver nota arriba.
-      // createRequire resuelve el paquete usando NODE_PATH (seteado por
-      // run-convex.mjs) y devuelve la ruta absoluta en disco. pathToFileURL
-      // la convierte a file:// URL, que es lo que ESM de Node exige para
-      // importar paquetes encontrados vía NODE_PATH.
+      // CJS require via NODE_PATH — ver nota arriba.
       const _req = createRequire(import.meta.url);
-      const duckPath = _req.resolve(["@notchat", "duck-destination"].join("/"));
-      const duck = (await import(pathToFileURL(duckPath).href)) as typeof import("@notchat/duck-destination");
+      const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
       dst = await duck.createDuckDestination(configToDuckOptions(config));
     } catch (err) {
       await sync.markError(
@@ -69,15 +68,22 @@ export const _processOnePage = internalAction({
 
     try {
       const result = await sync.processOneSnapshotPage(ctx, tableName, dst);
+      // Para duckdb_local los snapshots sí se auto-schedulean (solo 1 corre a
+      // la vez porque el watchdog limita a 1 action por tick para running_snapshot).
+      // Pero el primer batch de delta NO se schedulea aquí: dejamos que el
+      // watchdog lo dispare para evitar que coincida con el snapshot de otra tabla.
+      const isLocalDuck = config.destination?.kind === "duckdb_local";
       if (result.kind === "more") {
         await ctx.scheduler.runAfter(0, (internal as any).snapshot._processOnePage, {
           tableName,
         });
-      } else if (result.kind === "done") {
-        // Snapshot completo — arrancar el stream de deltas de inmediato.
+      } else if (result.kind === "done" && !isLocalDuck) {
+        // Snapshot completo — arrancar el stream de deltas de inmediato (cloud).
         await ctx.scheduler.runAfter(0, (internal as any).delta._processDeltaBatch, {
           tableName,
         });
+      } else if (result.kind === "done") {
+        // duckdb_local: el watchdog tick arranca el delta en el próximo ciclo.
       } else {
         // type_reset: tabla vuelve a pending — re-arrancar snapshot desde cero.
         console.log(JSON.stringify({
@@ -119,8 +125,7 @@ export const _tick = internalAction({
     if (config?.origin && config.deployKey && config.destination) {
       try {
         const _req = createRequire(import.meta.url);
-        const duckPath = _req.resolve(["@notchat", "duck-destination"].join("/"));
-        const duck = (await import(pathToFileURL(duckPath).href)) as typeof import("@notchat/duck-destination");
+        const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
         dst = await duck.createDuckDestination(configToDuckOptions(config));
       } catch {
         // No podemos abrir el destino — el watchdog igualmente procesa
@@ -129,9 +134,17 @@ export const _tick = internalAction({
     }
 
     try {
-      const actions = await watchdogDecide(tables, dst, Date.now());
+      // For local DuckDB, only start ONE table per tick — DuckDB single-writer
+      // limit means concurrent "use node" subprocesses can't open the same file.
+      // delta.ts no se auto-schedulea para duckdb_local; el watchdog maneja
+      // todo. deltaRestartMs = 11 s garantiza que el tick siguiente siempre
+      // retoma una tabla en running_delta (cron interval = 10 s).
+      const isLocalDuck = config?.destination?.kind === "duckdb_local";
+      const watchdogCfg = isLocalDuck ? { deltaRestartMs: 11_000 } : {};
+      const actions = await watchdogDecide(tables, dst, Date.now(), watchdogCfg);
+      const actionsToRun = isLocalDuck ? actions.slice(0, 1) : actions;
 
-      for (const action of actions) {
+      for (const action of actionsToRun) {
         console.log(
           JSON.stringify({
             level: "info",

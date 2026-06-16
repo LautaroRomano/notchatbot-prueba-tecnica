@@ -5,14 +5,17 @@
  * snapshot.ts (Convex no soporta `"use node"` en componentes).
  *
  * `_processDeltaBatch` procesa UN batch de `document_deltas` y:
- *  - Si `more` → self-schedulea la siguiente iteración de inmediato.
+ *  - Si `more` Y destino es MotherDuck → self-schedulea la próxima iteración.
+ *  - Si `more` Y destino es duckdb_local → retorna; el watchdog tick arranca
+ *    el siguiente batch (evita escritores concurrentes en el mismo archivo).
  *  - Si `idle` → se detiene; el cron tick lo retoma en max 10 segundos.
  *
  * El cursor se guarda en Convex DESPUÉS de que el commit al destino sea
  * exitoso — mismo invariante de recovery que el snapshot.
  */
 
-import { v } from "convex/values";
+import { createRequire } from "module";
+import { v } from "convex/values"; // v3
 import type { Destination, DuckDestinationOptions, SyncConfig } from "convex-sync-motherduck";
 import { MotherduckSync } from "convex-sync-motherduck";
 import { components, internal } from "./_generated/api";
@@ -35,8 +38,10 @@ export const _processDeltaBatch = internalAction({
 
     let dst: Destination;
     try {
-      const duckModulePath = ["@notchat", "duck-destination"].join("/");
-      const duck = (await import(duckModulePath)) as typeof import("@notchat/duck-destination");
+      // CJS require via NODE_PATH — igual que snapshot.ts. ESM import() ignora
+      // NODE_PATH para bare specifiers; createRequire() sí lo respeta.
+      const _req = createRequire(import.meta.url);
+      const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
       dst = await duck.createDuckDestination(configToDuckOptions(config));
     } catch (err) {
       await sync.markError(
@@ -49,14 +54,17 @@ export const _processDeltaBatch = internalAction({
 
     try {
       const result = await sync.processOneDeltaBatch(ctx, tableName, dst);
-      if (result.kind === "more") {
-        // Todavía hay cambios — self-schedulear la próxima iteración.
+      // Para duckdb_local no auto-schedulear: DuckDB solo admite un escritor.
+      // El watchdog tick (cada 10 s) arranca el siguiente batch, garantizando
+      // que solo una tabla usa el archivo a la vez.
+      const isLocalDuck = config.destination?.kind === "duckdb_local";
+      if (result.kind === "more" && !isLocalDuck) {
         await ctx.scheduler.runAfter(
           0,
           (internal as any).delta._processDeltaBatch,
           { tableName },
         );
-      } else if (result.kind === "type_reset") {
+      } else if (result.kind === "type_reset" && !isLocalDuck) {
         // Cambio de tipo detectado — tabla volvió a pending, arrancar snapshot.
         console.log(JSON.stringify({
           level: "info",
@@ -70,7 +78,7 @@ export const _processDeltaBatch = internalAction({
           { tableName },
         );
       }
-      // Si `idle`: alcanzamos el live-head. El cron tick reinicia en ~10s.
+      // Si `idle` o duckdb_local: el watchdog tick retoma en ≤10 s.
     } catch (err) {
       await sync.markError(ctx, tableName, errMsg(err));
     } finally {

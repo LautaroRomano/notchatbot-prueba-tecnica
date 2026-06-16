@@ -48,8 +48,9 @@ export type DocumentDeltasArgs = {
 export async function documentDeltas(
   args: DocumentDeltasArgs,
 ): Promise<DeltaPage> {
+  // self-hosted: /api/document_deltas; cloud: /api/streaming_export/document_deltas
   const url = new URL(
-    "/api/streaming_export/document_deltas",
+    "/api/document_deltas",
     args.origin,
   );
   url.searchParams.set("tableName", args.tableName);
@@ -87,7 +88,14 @@ function parseDeltaPage(json: unknown): DeltaPage {
     throw new Error("document_deltas: 'values' missing or not an array");
   }
   const cursor = obj.cursor;
-  if (typeof cursor !== "string") {
+  // self-hosted returns cursor as a number (e.g. 1781565001038852972);
+  // cloud returns a string. Both may return null/undefined when hasMore=false.
+  if (
+    cursor !== null &&
+    cursor !== undefined &&
+    typeof cursor !== "string" &&
+    typeof cursor !== "number"
+  ) {
     throw new Error("document_deltas: 'cursor' missing or not a string");
   }
   const hasMore = obj.hasMore;
@@ -97,7 +105,7 @@ function parseDeltaPage(json: unknown): DeltaPage {
 
   return {
     values: values.map(parseDeltaEntry),
-    cursor,
+    cursor: cursor == null ? "" : String(cursor),
     hasMore,
   };
 }
@@ -123,11 +131,21 @@ function parseDeltaEntry(raw: unknown): DeltaEntry {
     );
   }
 
-  const entry: DeltaEntry = { ts, id, action };
-  if (action !== "delete" && e.fields !== undefined) {
-    entry.fields = e.fields as DeltaEntry["fields"];
+  if (action === "delete") {
+    return { ts, id, action };
   }
-  return entry;
+  const fields = e.fields;
+  if (fields === undefined || fields === null || typeof fields !== "object") {
+    throw new Error(
+      "document_deltas: entry.fields missing or not an object for insert/replace",
+    );
+  }
+  return {
+    ts,
+    id,
+    action,
+    fields: fields as NonNullable<DeltaEntry["fields"]>,
+  };
 }
 
 async function safeReadText(res: Response): Promise<string> {

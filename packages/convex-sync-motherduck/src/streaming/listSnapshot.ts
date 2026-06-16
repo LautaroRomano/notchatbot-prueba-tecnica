@@ -67,7 +67,8 @@ export type ListSnapshotArgs = {
 export async function listSnapshot(
   args: ListSnapshotArgs,
 ): Promise<ListSnapshotPage> {
-  const url = new URL("/api/streaming_export/list_snapshot", args.origin);
+  // self-hosted: /api/list_snapshot; cloud: /api/streaming_export/list_snapshot
+  const url = new URL("/api/list_snapshot", args.origin);
   url.searchParams.set("tableName", args.tableName);
   if (args.cursor !== undefined) {
     url.searchParams.set("cursor", args.cursor);
@@ -109,17 +110,19 @@ function parsePage(json: unknown): ListSnapshotPage {
     throw new Error(`list_snapshot: 'values' missing or not an array`);
   }
   const cursor = obj.cursor;
-  if (typeof cursor !== "string") {
-    throw new Error(`list_snapshot: 'cursor' missing or not a string`);
+  // self-hosted returns cursor: null on the last page (hasMore: false)
+  if (cursor !== null && typeof cursor !== "string") {
+    throw new Error(`list_snapshot: 'cursor' is not a string or null`);
   }
   const hasMore = obj.hasMore;
   if (typeof hasMore !== "boolean") {
     throw new Error(`list_snapshot: 'hasMore' missing or not a boolean`);
   }
-  const snapshotTs = obj.snapshotTs;
+  // self-hosted uses 'snapshot'; cloud uses 'snapshotTs'
+  const snapshotTs = obj.snapshotTs ?? obj.snapshot;
   const page: ListSnapshotPage = {
     values: values as SnapshotDocument[],
-    cursor,
+    cursor: cursor ?? "",
     hasMore,
   };
   if (typeof snapshotTs === "number") page.snapshotTs = snapshotTs;

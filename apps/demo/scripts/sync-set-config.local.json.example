@@ -1,5 +1,5 @@
 {
-  "origin": "http://host.docker.internal:3210",
-  "deployKey": "010472798f03c29afd21824e3713c780abf0059f408ffd3cd1d5bb73dc677bcace33cdf7e4",
-  "destination": { "kind": "duckdb_local", "path": "/data/local.duckdb" }
+  "origin": "http://127.0.0.1:3212",
+  "deployKey": "REEMPLAZAR — ver apps/demo/.convex/local/default/config.json → campo adminKey",
+  "destination": { "kind": "duckdb_local", "path": "REEMPLAZAR — ruta absoluta al archivo .duckdb en tu máquina, p.ej. C:/Users/tu-usuario/proyecto/data/duckdb/local.duckdb" }
 }
