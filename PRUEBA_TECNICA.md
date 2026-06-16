@@ -45,7 +45,7 @@ Docs:
 - Repo: https://github.com/get-convex/convex-backend
 - Self-hosting guide: https://docs.convex.dev/self-hosting
 
-Con el backend local levantado, los endpoints viven en `http://localhost:3210/api/streaming_export/...` (puerto por defecto). El `CONVEX_DEPLOYMENT` apunta al backend local; las mutations/queries siguen funcionando exactamente igual que con la cloud.
+Con el backend local levantado, los endpoints viven en `http://localhost:3210/api/streaming_export/...` (puerto por defecto). Con `convex dev` contra self-hosted usás `CONVEX_SELF_HOSTED_URL` / `CONVEX_SELF_HOSTED_ADMIN_KEY` y **no** definís `CONVEX_DEPLOYMENT` en el mismo `.env` (la CLI lo rechaza); las mutations/queries siguen funcionando igual que con la cloud.
 
 ### MotherDuck: free trial o DuckDB local
 

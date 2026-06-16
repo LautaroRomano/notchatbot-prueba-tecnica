@@ -38,10 +38,8 @@ export const _processDeltaBatch = internalAction({
 
     let dst: Destination;
     try {
-      // CJS require via NODE_PATH — igual que snapshot.ts. ESM import() ignora
-      // NODE_PATH para bare specifiers; createRequire() sí lo respeta.
       const _req = createRequire(import.meta.url);
-      const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
+      const duck = _req("@notchat/duck-destination") as typeof import("@notchat/duck-destination");
       dst = await duck.createDuckDestination(configToDuckOptions(config));
     } catch (err) {
       await sync.markError(

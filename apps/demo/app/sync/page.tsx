@@ -60,9 +60,23 @@ export default function SyncPage() {
       <main>
         <h1>Sync status</h1>
         <p style={{ color: "#6b7280" }}>
-          No hay tablas registradas. Llamá a{" "}
-          <code>bunx convex run sync:register</code> para empezar.
+          No hay tablas registradas. El seed no registra el sync: primero
+          configurá el destino y después registrá las tablas (ver{" "}
+          <code>SETUP.md</code> pasos 6–7).
         </p>
+        <pre
+          style={{
+            background: "#f3f4f6",
+            padding: 12,
+            borderRadius: 8,
+            fontSize: 13,
+            overflow: "auto",
+          }}
+        >
+          {`# Desde la raíz del repo:
+bun run --cwd apps/demo convex:run-json -- sync:setConfig ./scripts/sync-set-config.local.json
+bun run --cwd apps/demo convex:run-json -- sync:register ./scripts/sync-register.local.json.example`}
+        </pre>
         <p>
           <a href="/">← Inicio</a>
         </p>

@@ -16,17 +16,11 @@
 
 import { createRequire } from "module";
 import { v } from "convex/values";
-// NO importar `@notchat/duck-destination` estáticamente. El analizador de
-// Convex bundlea este archivo en su pass de V8 (a pesar de "use node") y se
-// rompe resolviendo los .node binaries del native addon.
-//
-// Usamos `createRequire` para cargar el paquete vía CJS require() en lugar
-// de ESM import(). La diferencia clave: CJS require() SOPORTA NODE_PATH,
-// que el runtime de Convex local SÍ propaga a los workers (a diferencia de
-// variables de entorno custom como CONVEX_DUCK_PATH). El paquete se compiló
-// como CJS (.cjs) para que Node.js lo acepte aunque el package tenga
-// `"type": "module"`. esbuild no puede seguir `_req(computed_string)` así
-// que el bundle V8 queda limpio del native addon.
+// Carga con `createRequire("@notchat/duck-destination")` (literal). Declaración
+// `file:` en `apps/demo/package.json` para que exista en `apps/demo/node_modules`.
+// **Docker self-hosted**: hoy el backend no expone el mismo layout de módulos
+// que el embebido; para sync + DuckDB local en Windows usá backend embebido
+// (sin Docker) o ver SETUP → «Convex Docker vs DuckDB local».
 import type {
   Destination,
   DuckDestinationOptions,
@@ -53,9 +47,8 @@ export const _processOnePage = internalAction({
 
     let dst: Destination;
     try {
-      // CJS require via NODE_PATH — ver nota arriba.
       const _req = createRequire(import.meta.url);
-      const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
+      const duck = _req("@notchat/duck-destination") as typeof import("@notchat/duck-destination");
       dst = await duck.createDuckDestination(configToDuckOptions(config));
     } catch (err) {
       await sync.markError(
@@ -125,11 +118,17 @@ export const _tick = internalAction({
     if (config?.origin && config.deployKey && config.destination) {
       try {
         const _req = createRequire(import.meta.url);
-        const duck = _req(["@notchat", "duck-destination"].join("/")) as typeof import("@notchat/duck-destination");
+        const duck = _req("@notchat/duck-destination") as typeof import("@notchat/duck-destination");
         dst = await duck.createDuckDestination(configToDuckOptions(config));
-      } catch {
-        // No podemos abrir el destino — el watchdog igualmente procesa
-        // pending/error/stuck sin la comprobación de tableExists.
+      } catch (e) {
+        console.log(
+          JSON.stringify({
+            level: "warn",
+            event: "watchdog_open_destination_failed",
+            message: errMsg(e),
+          }),
+        );
+        // Sin destino el watchdog igual procesa pending/error/stuck (sin tableExists).
       }
     }
 

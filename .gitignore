@@ -15,6 +15,7 @@ apps/demo/scripts/*.local.json
 
 # convex
 .convex/
+apps/demo/convex/vendor/
 
 # duckdb local files
 *.duckdb

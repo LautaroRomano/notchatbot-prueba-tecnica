@@ -1,5 +1,8 @@
 {
-  "origin": "http://127.0.0.1:3212",
-  "deployKey": "REEMPLAZAR — ver apps/demo/.convex/local/default/config.json → campo adminKey",
-  "destination": { "kind": "duckdb_local", "path": "REEMPLAZAR — ruta absoluta al archivo .duckdb en tu máquina, p.ej. C:/Users/tu-usuario/proyecto/data/duckdb/local.duckdb" }
+  "origin": "http://localhost:3210",
+  "deployKey": "REEMPLAZAR — `docker compose exec -T backend ./generate_admin_key.sh` → línea notchat-local|...",
+  "destination": {
+    "kind": "duckdb_local",
+    "path": "/data/local.duckdb"
+  }
 }

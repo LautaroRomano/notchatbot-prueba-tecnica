@@ -34,6 +34,8 @@ El puerto del API Convex depende del modo:
 > Generá la admin key: `docker compose exec -T backend ./generate_admin_key.sh` y copiá la línea `notchat-local|...` a `apps/demo/.env.local` y a `apps/demo/scripts/sync-set-config.local.json` (`origin` + `deployKey`). Opcional: duplicá esas dos variables en `apps/demo/convex-selfhosted.env` (gitignored) para `--env-file` con la CLI.
 >
 > **Solo `bun run convex:dev` sin Docker**: el backend embebido elige un puerto libre; no hace falta Docker para el flujo mínimo, pero en algunos entornos Windows el `start_push` del embebido puede fallar (500): en ese caso usá Docker como arriba.
+>
+> **Sync a `duckdb_local` (DuckDB nativo en actions) + backend en Docker**: hoy el contenedor self-hosted **no** expone el mismo `node_modules` que tu PC para resolver `@notchat/duck-destination`, y verás `Cannot find module '@notchat/duck-destination'`. Para **pasos 5–9 del sync a archivo `.duckdb` local**, usá **backend embebido**: en `apps/demo/.env.local` **no** definas `CONVEX_SELF_HOSTED_URL` ni `CONVEX_SELF_HOSTED_ADMIN_KEY` (solo `NEXT_PUBLIC_CONVEX_URL` / `SITE` apuntando al puerto que te imprima `convex dev`, p. ej. `http://127.0.0.1:3212`). En `sync-set-config` usá ese mismo `origin`, la key `anonymous-demo|...` de `apps/demo/.convex/local/default/config.json` y ruta Windows al `.duckdb`. Podés seguir usando Docker para el dashboard u otros servicios, pero **no** mezcles `convex dev` apuntando a `localhost:3210` con ese sync salvo que el destino sea MotherDuck u otra vía sin el addon local.
 
 ---
 
@@ -160,16 +162,19 @@ Abrí `apps/demo/scripts/sync-set-config.local.json` y reemplazá los campos:
 ```json
 {
   "origin": "http://localhost:3210",
-  "deployKey": "<pegá acá el adminKey del paso 6a>",
+  "deployKey": "<adminKey del paso 6a>",
   "destination": {
     "kind": "duckdb_local",
-    "path": "C:/ruta/absoluta/al/proyecto/data/duckdb/local.duckdb"
+    "path": "/data/local.duckdb"
   }
 }
 ```
 
-> **Importante**: `path` tiene que ser una ruta absoluta Windows con `/` (no `\`),
-> apuntando a tu máquina host. Con Docker, `origin` debe ser **`http://localhost:3210`** en Windows (evitá `127.0.0.1` salvo que verifiques que la misma admin key funciona con `fetch`/`curl` contra esa URL).
+Si usás **solo** el backend embebido de `convex dev` (sin Docker) y las actions corren en tu Windows, usá ruta absoluta al `.duckdb` en el host, p. ej. `C:/Users/.../data/duckdb/local.duckdb`, y `origin` + `deployKey` del `apps/demo/.convex/local/default/config.json`.
+
+> **Importante**: con **Docker** (`docker compose up -d backend`), las actions de Node corren **dentro del contenedor** Linux: el archivo montado por `docker-compose.yml` es **`/data/local.duckdb`** (no una ruta `C:/...`). `origin` debe ser **`http://localhost:3210`** y la key **`notchat-local|...`** de `docker compose exec -T backend ./generate_admin_key.sh`. Si mezclás embebido (`127.0.0.1:3212`, `anonymous-demo|...`) con un deploy contra **3210**, el streaming export y DuckDB no coinciden con el backend real.
+>
+> **Sólo** `origin`, `deployKey` y `destination` (y opcional `motherduckToken` si usás MotherDuck). No pegues acá `CONVEX_INSTANCE_SECRET` ni otras vars de Docker: el deploy falla con *Server Error* porque esas claves no existen en el esquema `syncConfig` del componente.
 
 ### 6c. Aplicar la configuración
 
@@ -304,3 +309,5 @@ Después seguí desde el paso 1.
 | Tabla atascada en `error` sin progresar | El watchdog reintenta después de 30s. Si persiste, correr `sync:resetAll` |
 | `Can't resolve 'convex/react'` en Next.js | Borrar `apps/demo/.next` y reiniciar `bun run dev` |
 | `BadAdminKey` con Docker en **Windows** usando `127.0.0.1` | Usá `http://localhost:3210` en `CONVEX_SELF_HOSTED_URL`, `NEXT_PUBLIC_CONVEX_URL` y en `sync-set-config` → `origin` (el host y `127.0.0.1` pueden no ser el mismo listener). |
+| `Cannot find module '@notchat/duck-destination'` con `convex dev` → **localhost:3210** (Docker) | El sync `duckdb_local` usa DuckDB nativo en actions; el contenedor self-hosted **no** resuelve `@notchat/duck-destination` del monorepo. Para DuckDB en archivo local usá **backend embebido** (sin `CONVEX_SELF_HOSTED_*` en `apps/demo/.env.local`) y `sync-set-config` alineado a ese `origin`/key (ver bloque *Arquitectura local*). Para quedarte en Docker, destino **MotherDuck** u otra vía sin el addon local. |
+| Snapshots / DuckDB con Docker + `duckdb_local` | `convex.json` lista `@duckdb/*` como externos para Linux. En `sync-set-config` usá **`/data/local.duckdb`** y **`http://localhost:3210`** + key `notchat-local|...` coherentes con el contenedor (no mezclar con embebido `127.0.0.1:3212` / `anonymous-demo`). Si igual falla el módulo `@notchat/…`, el contenedor no monta ese paquete: usá embebido para este flujo. |
